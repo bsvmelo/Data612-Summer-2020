@@ -1,0 +1,245 @@
+---
+title: "DATA 612 - Summer 2020 - Project 1 | Global Baseline Predictors and RMSE"
+author: "Bruno de Melo"
+date: "June 6, 2020"
+output: 
+  html_document:
+    toc: true # table of content true
+    toc_float: true
+    toc_depth: 3  # upto three depths of headings (specified by #, ## and ###)
+    number_sections: true  ## if you want number sections at each table header
+    theme: united  # many options for theme, this one is my favorite.
+    highlight: tango  # specifies the syntax highlighting style
+    df_print: kable
+    #css: my.css   # you can add your custom css, should be in same folder
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+
+if(!require(tidyverse)) install.packages("tidyverse",repos = "http://cran.us.r-project.org")
+if(!require(recommenderlab)) install.packages("recommenderlab",repos = "http://cran.us.r-project.org")
+
+
+library("tidyverse")
+library("recommenderlab")
+
+
+```
+
+# Introduction - Random ratings
+<a href="#top"> Back To Top </a>  
+
+This recommender system is based on a random generated ratings. Technique used is **baseline predictor**.
+
+Data set contains 10 users with ratings accross 20 items, but could be easily expanded to any size. It was extracted from:    
+recommenderlab: A Framework for Developing and Testing Recommendation Algorithms, at
+http://citeseerx.ist.psu.edu/viewdoc/summary?doi=10.1.1.323.9961
+
+# Data Loading 
+
+First, I will generate a random 10x20 matrix in order to manually calculate averages, RMSE, biases and the baseline predictor.
+
+```{r}
+# seeding
+set.seed(1234)
+
+# random matrix
+m<-matrix(sample(c(as.numeric(1:5), NA), 200, replace=TRUE, prob=c(rep(.4/2,5),.6)), ncol=20, dimnames=list(user=paste("u", 1:10, sep=''), item=paste("i", 1:20, sep='')))
+m
+
+```
+
+
+# Conversion to a User-Item Rating Matrix
+
+```{r}
+# coersing to realRatingMatrix type
+r<-as(m,"realRatingMatrix")
+class(r)
+```
+
+This the user-item matrix dimension.
+
+```{r}
+r
+```
+
+
+# Exploratory Data Analysis
+
+Exploring the dataset, plotting ratings distribution.
+
+```{r}
+hist(getRatings(r))
+```
+
+This is a rather balanced rating distribution.
+
+Checking the ratings vector, to check number of missing ratings. 
+
+```{r}
+vec_ratings<-as.vector(r@data)
+(table_ratings<-table(vec_ratings))
+```
+
+As per the package documentation, a 0 rating represents a missing value.
+
+Building a heatmap.
+
+```{r}
+image(r)
+```
+
+Most user have rated lots of items, only exception is perhaps user 5 with only 5 ratings.
+
+
+# Data set split between training and testing
+<a href="#top"> Back To Top </a>  
+
+Data set to be split in Training/Testing subset with a 90/10 ratio.
+
+```{r}
+ev<-evaluationScheme(r,method="split",train=0.9,given=5,goodRating=3)
+ev
+```
+**Training set**
+```{r}
+#ev@knownData
+ev_train<-as(ev@knownData,"matrix")
+ev_train
+```
+
+Confirmation of percentage of users in the training set
+```{r}
+nrow(getData(ev,"train"))/nrow(r)
+```
+
+**Testing set**
+
+```{r}
+#testing set
+ev_test<-as(ev@unknownData,"matrix")
+ev_test
+```
+
+Confirmation of percentage of users in the training set
+
+```{r}
+nrow(getData(ev,"unknown"))/nrow(r)
+```
+
+
+
+# Raw Averages Calculation
+
+Raw average is the average of the entire dataset. We will calculate a raw average for the training and the test sets.
+
+```{r}
+# Raw Averages
+
+#Training set
+train_set_vec<-as.vector(ev_train)
+raw_avg_train_total<-mean(train_set_vec,na.rm=TRUE)
+n_train<-length(train_set_vec)-sum(is.na(train_set_vec))
+raw_avg_train_total
+
+
+#Test set
+test_set_vec<-as.vector(ev_test)
+raw_avg_test_total<-mean(test_set_vec,na.rm=TRUE)
+n_test<-length(test_set_vec)-sum(is.na(test_set_vec))
+raw_avg_test_total
+```
+
+# RMSE Calculation
+
+RMSE stands for Root Mean of Square Error, and it is defined as the standard deviation of the difference between the real and predicted ratings.
+
+Calculating RMSE for training and test sets
+
+```{r}
+#RMSE Training set
+rmse_train<-sqrt(sum((train_set_vec-raw_avg_train_total)^2,na.rm = TRUE)/n_train)
+rmse_train
+
+#RMSE Test set
+rmse_test<-sqrt(sum((test_set_vec-raw_avg_test_total)^2,na.rm = TRUE)/n_test)
+rmse_test
+
+
+```
+
+
+# Bias Calculation
+
+Bias is defined as the difference between the average of each user / item and the raw average. This is only calculated for the training set.
+
+```{r}
+#Bias Training set
+bias_user_train<-rowMeans(ev_train,na.rm=TRUE)-raw_avg_train_total
+bias_user_train
+
+bias_item_train<-colMeans(ev_train,na.rm=TRUE)-raw_avg_train_total
+bias_item_train
+```
+
+# Baseline Predictor Calculation
+
+Baseline predictor which is the predictor for this exercise is calculated as the sum of raw average, user bias and item bias for each combination of user + item.
+
+```{r}
+# Creating matrix but with a floor at 1 and a cap at 5
+pred<-matrix(, nrow=length(bias_user_train), ncol=length(bias_item_train))
+
+for(i in 1:length(bias_user_train)){for(j in 1:length(bias_item_train)){
+ a<-raw_avg_train_total+bias_user_train[i]+bias_item_train[j]
+ a<-ifelse(a<1,1,ifelse(a>5,5,a))
+ pred[i,j] <- a
+}}
+
+pred
+
+```
+
+# RMSE: baseline predictor
+
+With the baseline predictor, we calculate RMSE on both testing and training set.
+
+```{r}
+
+#RMSE Training set
+rmse_train_pred<-sqrt(sum((ev_train-pred)^2,na.rm = TRUE)/n_train)
+rmse_train_pred
+
+#RMSE Test set
+rmse_test_pred<-sqrt(sum((ev_test-pred)^2,na.rm = TRUE)/n_test)
+rmse_test_pred
+
+
+```
+
+# RMSE Improvement
+
+RMSE Improvement based on baseline predictior is measured against raw average RMSE.
+
+```{r}
+# Training set
+imp_train<-(1-rmse_train_pred/rmse_train)/100
+imp_train  
+
+# Testing set
+imp_test<-  (1-rmse_test_pred/rmse_test)/100
+imp_test
+
+
+```
+
+
+# Conclusion
+
+Using baseline predictor method, overall training set RMSE gets improved by 0.2% but testing set does not get improved.
+
+
+
