@@ -142,7 +142,7 @@ A handful of users have more than 5,000 reviews, while most of the top 100 users
 
 Let's define a subset containing:           
 - users who have rated more than 100 but less than 500 items      
-- items that have been reviewed at least 100 times but less than 300 times.
+- items that have been reviewed at least 5 times but less than 25 times.
 
 
 ```{r}
@@ -153,41 +153,39 @@ ratings<-ratings[rowCounts(ratings)<500,]
 ratings
 ```
 
-Let's check the number of items that have been rated.
+Let's check the number of items that have been rated. There are many items that did not receive any ratings, let's count them.
 
 ```{r}
 n_items<-colCounts(ratings)
-qplot(n_items[n_items<25]) + stat_bin(binwidth = 0.1) +ggtitle("Distribution of ratings")
+n_items_0<-n_items[n_items==0]
+#table_items<-table(n_items)
+#table_items
+
 
 ```
+
+There are `r n_items_0` items from a total of `r n_items` that have no reviews, so let's remove them and adding items that have been reviewed at least 5 times but less than 25 times.
 
 
 ```{r}
 # Items subsetting
-ratings<-ratings[,colCounts(ratings)>0] 
+ratings<-ratings[,colCounts(ratings)>5] 
+ratings
+
+ratings<-ratings[,colCounts(ratings)<25] 
 ratings
 
 ```
 
-
-
-Plot below shows the rating distribution.
-
-```{r}
-vector_ratings<-as.vector(getRatings(ratings))
-(table_vec_ratings<-table(vector_ratings))
-```
-
-
 # Heatmap visualization
 
-Visualization of the top 5 percent of users and items in the next subset matrix.
+Visualization of the top 1 percent of users and items in the next subset matrix.
 
 ```{r}
-min_inst<-quantile(rowCounts(ratings),0.98)
-min_users<-quantile(colCounts(ratings),0.98)
+min_inst<-quantile(rowCounts(ratings),0.99)
+min_users<-quantile(colCounts(ratings),0.99)
 
-#image(ratings,main="Subset Heatmap")
+# image(ratings,main="Subset Heatmap")
 image(ratings[rowCounts(ratings)>min_inst,colCounts(ratings)>min_users],main="Heatmap of top users and items")
 
 ```
@@ -204,8 +202,8 @@ ratings_norm<-normalize(ratings)
 Following plot shows the heatmap of the top users and movies, after normalization.
 
 ```{r}
-min_inst<-quantile(rowCounts(ratings_norm),0.97)
-min_users<-quantile(colCounts(ratings_norm),0.97)
+min_inst<-quantile(rowCounts(ratings_norm),0.99)
+min_users<-quantile(colCounts(ratings_norm),0.99)
 
 #image(ratings,main="Subset Heatmap")
 image(ratings_norm[rowCounts(ratings_norm)>min_inst,colCounts(ratings_norm)>min_users],main="Heatmap of top users and items - with normalization")
@@ -218,14 +216,14 @@ image(ratings_norm[rowCounts(ratings_norm)>min_inst,colCounts(ratings_norm)>min_
 We will define a matrix where 1 is assigned to ratings above 3 and 0 otherwise.
 
 ```{r}
-ratings_good<-binarize(ratings, minRating=4)
+ratings_good<-binarize(ratings, minRating=3)
 ```
 
 Following plot shows the heatmap of the top users and movies, after binarization
 
 ```{r}
-min_itm_bin<-quantile(rowCounts(ratings),0.97)
-min_users_bin<-quantile(colCounts(ratings),0.97)
+min_itm_bin<-quantile(rowCounts(ratings),0.99)
+min_users_bin<-quantile(colCounts(ratings),0.99)
 
 image(ratings_good[rowCounts(ratings)>min_itm_bin,colCounts(ratings)>min_users_bin],main="Heatmap of top users and items - with binarization")
 
@@ -237,7 +235,7 @@ Package *recommenderlab* contains a function that compute similarities based on 
 
 Let's look at similarities between users and items using these methods.
 
-#  Similarities between top 3% users
+#  Similarities between top 1% users
 
 Let's compare the Non-normalized and the normalized datasets, under the cosine distance method.
 
@@ -257,19 +255,19 @@ sim_users_norm<-similarity(ratings_norm[rowCounts(ratings)>min_inst,colCounts(ra
 image(as.matrix(sim_users_norm, main="User Similarity - Normalized DataSet"))
 ```
 
-Normalized dataset looks less similar than the non-normalized dataset.
+Normalized dataset looks more similar than the non-normalized dataset.
 
 Let's visualize the binarized dataset, using the *jaccard* method.
 
 ```{r}
 # Binarized dataset
-sim_users_bin<-similarity(ratings_good[rowCounts(ratings)>min_inst,colCounts(ratings)>min_users], method = "jaccard", which="users")
+sim_users_bin<-similarity(ratings_good[rowCounts(ratings)>min_itm_bin,colCounts(ratings)>min_users_bin], method = "jaccard", which="users")
 image(as.matrix(sim_users_bin, main="User Similarity- Binarized DataSet"))
 ```
 
 Binarized dataset looks less similar than the non-normalized and normalized datasets.
 
-#  Similarities between top 10% items
+#  Similarities between top 1% items
 
 As before, let's compare similarities between three datasets: non-normalized, normalized and binarized sets.
 
@@ -290,16 +288,16 @@ image(as.matrix(sim_item_norm, main="Item Similarity - Normalized DataSet"))
 
 ```
 
-This matrix looks less similar than the previous one.
+This matrix looks like the previous one.
 
 ```{r}
 # binarized dataset
-sim_item_bin<-similarity(ratings_good[rowCounts(ratings)>min_inst,colCounts(ratings)>min_users], method = "jaccard", which="items")
+sim_item_bin<-similarity(ratings_good[rowCounts(ratings)>min_itm_bin,colCounts(ratings)>min_users_bin], method = "jaccard", which="items")
 image(as.matrix(sim_item_bin, main="Item Similarity - Binarized DataSet"))
 
 ```
 
-As before, the binarized dataset is very dissimilar.
+As before, the binarized dataset is very similar.
 
 # Rating Prediction using different methodologies
 <a href="#top"> Back To Top </a> 
