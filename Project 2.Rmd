@@ -164,7 +164,7 @@ n_items_0<-n_items[n_items==0]
 
 ```
 
-There are `r n_items_0` items from a total of `r n_items` that have no reviews, so let's remove them and adding items that have been reviewed at least 5 times but less than 25 times.
+There are `r n_items_0` items from a total of `r n_items` that have no reviews, so let's remove them and add items that have been reviewed at least 5 times but less than 25 times.
 
 
 ```{r}
@@ -176,6 +176,14 @@ ratings<-ratings[,colCounts(ratings)<25]
 ratings
 
 ```
+
+Let's check whether there might be users who didn't rate any item. There are `r sum(rowCounts(ratings)==0)` users with this criteria, let's remove them.
+
+```{r}
+ratings<-ratings[rowCounts(ratings)>=5,] 
+ratings
+```
+
 
 # Heatmap visualization
 
@@ -302,6 +310,15 @@ As before, the binarized dataset is very similar.
 # Rating Prediction using different methodologies
 <a href="#top"> Back To Top </a> 
 
+Given size, let's use the top 2% to work with ratings preediction.
+```{r}
+min_it<-quantile(rowCounts(ratings),0.90)
+min_users<-quantile(colCounts(ratings),0.90)
+
+redux<-ratings[rowCounts(ratings)>min_it,colCounts(ratings)>min_users]
+
+```
+
 Two methods will be used, IBCF and UBCF.
 
 # Item-based collaborative filtering - IBCF
@@ -318,94 +335,60 @@ First step is to split dataset into training and testing datasets.
 
 Let's use a 90/10 relation.
 
-Function *evaluationScheme* will be used and it normalizes data before splitting. We will be using two methods to split the data: split and bootstrap.
+Function *evaluationScheme* will be used and it normalizes data before splitting. We will be using three methods to split the data: split, bootstrap, and k-fold.
 
 ```{r}
 #Split method
-ev_split<-evaluationScheme(ratings,method="split",train=0.9,given=0,goodRating=4)
+ev_split<-evaluationScheme(redux,method="split",train=0.9,given=3,goodRating=3)
 ev_split
 
 #Confirmation of percentage of users in the training set
 ev_split_train<-as(ev_split@knownData,"matrix")
-nrow(getData(ev_split,"train"))/nrow(ratings)
+nrow(getData(ev_split,"train"))/nrow(redux)
 #Confirmation of percentage of users in the testing set
 ev_split_test<-as(ev_split@unknownData,"matrix")
-nrow(getData(ev_split,"unknown"))/nrow(ratings)
+nrow(getData(ev_split,"unknown"))/nrow(redux)
 
 #Bootstrap method
-ev_boot<-evaluationScheme(ratings,method="bootstrap",train=0.9,given=0,goodRating=4)
+ev_boot<-evaluationScheme(redux,method="bootstrap",k=1,train=0.9,given=3,goodRating=3)
 ev_boot
 
 ev_train_boot<-as(ev_boot@knownData,"matrix")
-nrow(getData(ev_boot,"train"))/nrow(ratings)
+nrow(getData(ev_boot,"train"))/nrow(redux)
 
 ev_test_boot<-as(ev_boot@unknownData,"matrix")
-nrow(getData(ev_boot,"unknown"))/nrow(ratings)
+nrow(getData(ev_boot,"unknown"))/nrow(redux)
+
+#k-fold method
+ev_fold<-evaluationScheme(redux,method="cross-validation",k=5,train=0.9,given=3,goodRating=3)
+ev_fold
+
 ```
 
 # Building recommendation model
 
-We will build a recommendation model for each algorithm, IBCF and UBCF, using two simililarity methods, Cosine and Pearson. For each algorithm, there are two different training/testing sets.
+We will build a recommendation model for each algorithm, IBCF and UBCF, using three different ways to split the datasets (split, bootstraping and k-fold), and two different simililarity methods, Cosine and Pearson. 
 
 ```{r}
-#Datasets using split
-models_to_evaluate<- list(
-ibcf_cos_s=list(name="IBCF",parameter=list(method="cosine")),
-ibcf_pea_s=list(name="IBCF",parameter=list(method="pearson")),
-ubcf_cos_s=list(name="UBCF",parameter=list(method="cosine")),
-ubcf_pea_s=list(name="UBCF",parameter=list(method="pearson"))
-)
-  
+#Datasets 
 ev_split_rec<-Recommender(data=getData(ev_split,"train"), method="IBCF", parameter=list(method="cosine"))
-ev_split_pred<-predict(object=ev_split_rec,newdata=getData(ev_split,"known"),n=15, type="ratings")
-qplot(rowCounts(ev_split_pred))+geom_histogram(binwidth = 0.01)
+ev_split_pred<-predict(object=ev_split_rec,newdata=getData(ev_split,"known"),n=5, type="ratings")
 
-eva_accu<-calcPredictionAccuracy(x=ev_split_pred,data=getData(ev_split,"unknown"),byUser=TRUE)
+eva_accu<-calcPredictionAccuracy(x=ev_split_pred,data=getData(ev_split,"unknown"),byUser=FALSE)
+head(eva_accu)
+
+ev_boot_rec<-Recommender(data=getData(ev_boot,"train"), method="IBCF", parameter=list(method="cosine"))
+ev_boot_pred<-predict(object=ev_boot_rec,newdata=getData(ev_boot,"known"),n=5, type="ratings")
+
+eva_accu_boot<-calcPredictionAccuracy(x=ev_boot_pred,data=getData(ev_boot,"unknown"),byUser=FALSE)
+head(eva_accu_boot)
+
+ev_fold_rec<-Recommender(data=getData(ev_fold,"train"), method="IBCF", parameter=list(method="cosine"))
+ev_fold_pred<-predict(object=ev_fold_rec,newdata=getData(ev_fold,"known"),n=5, type="ratings")
+
+eva_accu_fold<-calcPredictionAccuracy(x=ev_fold_pred,data=getData(ev_fold,"unknown"),byUser=FALSE)
+head(eva_accu_fold)
 
 
-#Datasets using bootstrap
-rec_model_ibcf_cos<-Recommender(data=rec_ibcf_train_norm,method="IBCF",parameter=list(normalize=FALSE,method="Cosine"))
-rec_model_ibcf_pea<-Recommender(data=rec_ibcf_train_norm,method="IBCF",parameter=list(normalize=FALSE,method="pearson"))
-rec_model_ibcf_cos<-Recommender(data=rec_ubcf_train_norm,method="UBCF",parameter=list(normalize=FALSE,method="Cosine"))
-rec_model_ibcf_pea<-Recommender(data=rec_ubcf_train_norm,method="UBCF",parameter=list(normalize=FALSE,method="pearson"))
-
-rec_model
-
-model_det<-getModel(recc_model)
-model_det$data
-
-r1<-Recommender(getData(ev,"train"),"UBCF")
-r1
-```
-
-Third step is to apply recommender system on the test set.
-
-```{r}
-
-recc_pred<-predict(object=recc_model,newdata=recc_test, type="ratings")
-recc_pred
-
-recc_pred_comp<-predict(object=recc_model,newdata=recc_test1, type="ratingMatrix")
-recc_pred_comp
-
-p1<-predict(r1,getData(ev,"known"),type="ratings")
-p1
 
 ```
-
-Results are stored in a matrix.
-
-```{r}
-res<-as(recc_pred, "matrix")
-res[1:5,1:10]
-
-res_comp<-as(recc_pred_comp, "matrix")
-res_comp[1:5,1:10]
-
-```
-
-Fourth step is to evaluate the predicted ratings
-```{r}
-ev_pred<-calcPredictionAccuracy(recc_pred,data=getData(recc_model,"unknowm"),byUser=TRUE)
-```
-
