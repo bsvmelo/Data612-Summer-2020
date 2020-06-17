@@ -1,6 +1,6 @@
 ---
 title: "DATA 612 - Summer 2020 - Project 2 | Content-Based and Collaborative Filtering"
-author: "Bruno de Melo"
+author: "Bruno de Melo and Leland Randles"
 date: "June 13, 2020"
 output: 
   html_document:
@@ -164,7 +164,7 @@ n_items_0<-n_items[n_items==0]
 
 ```
 
-There are `r n_items_0` items from a total of `r n_items` that have no reviews, so let's remove them and add items that have been reviewed at least 5 times but less than 25 times.
+There are `r n_items_0` items from a total of `r n_items` that have no reviews, so let's remove them and narrow the data set to items that have been reviewed at least 5 times but less than 25 times.
 
 
 ```{r}
@@ -207,7 +207,7 @@ Given most ratings are either 4 or 5, normalization can remove this bias.
 ratings_norm<-normalize(ratings)
 ```
 
-Following plot shows the heatmap of the top users and movies, after normalization.
+Following plot shows the heatmap of the top users and items, after normalization.
 
 ```{r}
 min_inst<-quantile(rowCounts(ratings_norm),0.99)
@@ -310,7 +310,7 @@ As before, the binarized dataset is very similar.
 # Rating Prediction using different methodologies
 <a href="#top"> Back To Top </a> 
 
-Given size, let's use the top 2% to work with ratings preediction.
+Given size, let's use the top 10% to work with ratings prediction.
 ```{r}
 min_it<-quantile(rowCounts(ratings),0.90)
 min_users<-quantile(colCounts(ratings),0.90)
@@ -342,22 +342,9 @@ Function *evaluationScheme* will be used and it normalizes data before splitting
 ev_split<-evaluationScheme(redux,method="split",train=0.9,given=3,goodRating=3)
 ev_split
 
-#Confirmation of percentage of users in the training set
-ev_split_train<-as(ev_split@knownData,"matrix")
-nrow(getData(ev_split,"train"))/nrow(redux)
-#Confirmation of percentage of users in the testing set
-ev_split_test<-as(ev_split@unknownData,"matrix")
-nrow(getData(ev_split,"unknown"))/nrow(redux)
-
 #Bootstrap method
 ev_boot<-evaluationScheme(redux,method="bootstrap",k=1,train=0.9,given=3,goodRating=3)
 ev_boot
-
-ev_train_boot<-as(ev_boot@knownData,"matrix")
-nrow(getData(ev_boot,"train"))/nrow(redux)
-
-ev_test_boot<-as(ev_boot@unknownData,"matrix")
-nrow(getData(ev_boot,"unknown"))/nrow(redux)
 
 #k-fold method
 ev_fold<-evaluationScheme(redux,method="cross-validation",k=5,train=0.9,given=3,goodRating=3)
@@ -367,28 +354,130 @@ ev_fold
 
 # Building recommendation model
 
+
 We will build a recommendation model for each algorithm, IBCF and UBCF, using three different ways to split the datasets (split, bootstraping and k-fold), and two different simililarity methods, Cosine and Pearson. 
 
+Note that code execution below is somehow slow.
+
+# IBCF
 ```{r}
-#Datasets 
+#Building the models
+
+#IBCF
+#split
+#Cosine
 ev_split_rec<-Recommender(data=getData(ev_split,"train"), method="IBCF", parameter=list(method="cosine"))
 ev_split_pred<-predict(object=ev_split_rec,newdata=getData(ev_split,"known"),n=5, type="ratings")
+IBCF_split_cosine<-calcPredictionAccuracy(x=ev_split_pred,data=getData(ev_split,"unknown"),byUser=FALSE)
+#Pearson
+ev_split_rec1<-Recommender(data=getData(ev_split,"train"), method="IBCF", parameter=list(method="pearson"))
+ev_split_pred1<-predict(object=ev_split_rec1,newdata=getData(ev_split,"known"),n=5, type="ratings")
+IBCF_split_pearson<-calcPredictionAccuracy(x=ev_split_pred1,data=getData(ev_split,"unknown"),byUser=FALSE)
 
-eva_accu<-calcPredictionAccuracy(x=ev_split_pred,data=getData(ev_split,"unknown"),byUser=FALSE)
-head(eva_accu)
-
+#bootstrapping
+#Cosine
 ev_boot_rec<-Recommender(data=getData(ev_boot,"train"), method="IBCF", parameter=list(method="cosine"))
 ev_boot_pred<-predict(object=ev_boot_rec,newdata=getData(ev_boot,"known"),n=5, type="ratings")
+IBCF_boot_cosine<-calcPredictionAccuracy(x=ev_boot_pred,data=getData(ev_boot,"unknown"),byUser=FALSE)
+#Pearson
+ev_boot_rec1<-Recommender(data=getData(ev_boot,"train"), method="IBCF", parameter=list(method="pearson"))
+ev_boot_pred1<-predict(object=ev_boot_rec1,newdata=getData(ev_boot,"known"),n=5, type="ratings")
+IBCF_boot_pearson<-calcPredictionAccuracy(x=ev_boot_pred1,data=getData(ev_boot,"unknown"),byUser=FALSE)
 
-eva_accu_boot<-calcPredictionAccuracy(x=ev_boot_pred,data=getData(ev_boot,"unknown"),byUser=FALSE)
-head(eva_accu_boot)
-
+#k-fold
+#Cosine
 ev_fold_rec<-Recommender(data=getData(ev_fold,"train"), method="IBCF", parameter=list(method="cosine"))
 ev_fold_pred<-predict(object=ev_fold_rec,newdata=getData(ev_fold,"known"),n=5, type="ratings")
+IBCF_fold_cosine<-calcPredictionAccuracy(x=ev_fold_pred,data=getData(ev_fold,"unknown"),byUser=FALSE)
+#Pearson
+ev_fold_rec1<-Recommender(data=getData(ev_fold,"train"), method="IBCF", parameter=list(method="pearson"))
+ev_fold_pred1<-predict(object=ev_fold_rec1,newdata=getData(ev_fold,"known"),n=5, type="ratings")
+IBCF_fold_pearson<-calcPredictionAccuracy(x=ev_fold_pred1,data=getData(ev_fold,"unknown"),byUser=FALSE)
 
-eva_accu_fold<-calcPredictionAccuracy(x=ev_fold_pred,data=getData(ev_fold,"unknown"),byUser=FALSE)
-head(eva_accu_fold)
-
-
-
+#results
+eval_accuracy_cosine<-rbind(IBCF_split_cosine,IBCF_boot_cosine,IBCF_fold_cosine)
+eval_accuracy_pearson<-rbind(IBCF_split_pearson,IBCF_boot_pearson,IBCF_fold_pearson)
 ```
+
+Table below shows accuracy measures on the ICBF algorithm.
+
+```{r}
+eval_accuracy_cosine
+eval_accuracy_pearson
+```
+
+Results     
+- Similarities:   
+Pearson method yields lower errors than using Cosine.
+
+- Train/Test split method:
+Using Cosine similarity measure, k-fold splitting method yields lower errors.     
+Using Pearson similarity measure, split method yields lower errors.
+
+- In general,the split-pearson combination is the recommender with lowest prediction error.
+
+
+# UBCF
+
+Repeating the same procedure above for the UBCF algorithm, processing time could be slow.
+
+```{r}
+#UBCF
+#split
+#Cosine
+ev_split_rec_u<-Recommender(data=getData(ev_split,"train"), method="UBCF", parameter=list(method="cosine"))
+ev_split_pred_u<-predict(object=ev_split_rec_u,newdata=getData(ev_split,"known"),n=5, type="ratings")
+UBCF_split_cosine<-calcPredictionAccuracy(x=ev_split_pred_u,data=getData(ev_split,"unknown"),byUser=FALSE)
+#Pearson
+ev_split_rec1_u<-Recommender(data=getData(ev_split,"train"), method="UBCF", parameter=list(method="pearson"))
+ev_split_pred1_u<-predict(object=ev_split_rec1_u,newdata=getData(ev_split,"known"),n=5, type="ratings")
+UBCF_split_pearson<-calcPredictionAccuracy(x=ev_split_pred1_u,data=getData(ev_split,"unknown"),byUser=FALSE)
+
+#bootstrapping
+#Cosine
+ev_boot_rec_u<-Recommender(data=getData(ev_boot,"train"), method="UBCF", parameter=list(method="cosine"))
+ev_boot_pred_u<-predict(object=ev_boot_rec_u,newdata=getData(ev_boot,"known"),n=5, type="ratings")
+UBCF_boot_cosine<-calcPredictionAccuracy(x=ev_boot_pred_u,data=getData(ev_boot,"unknown"),byUser=FALSE)
+#Pearson
+ev_boot_rec1_u<-Recommender(data=getData(ev_boot,"train"), method="UBCF", parameter=list(method="pearson"))
+ev_boot_pred1_u<-predict(object=ev_boot_rec1_u,newdata=getData(ev_boot,"known"),n=5, type="ratings")
+UBCF_boot_pearson<-calcPredictionAccuracy(x=ev_boot_pred1_u,data=getData(ev_boot,"unknown"),byUser=FALSE)
+
+#k-fold
+#Cosine
+ev_fold_rec_u<-Recommender(data=getData(ev_fold,"train"), method="UBCF", parameter=list(method="cosine"))
+ev_fold_pred_u<-predict(object=ev_fold_rec_u,newdata=getData(ev_fold,"known"),n=5, type="ratings")
+UBCF_fold_cosine<-calcPredictionAccuracy(x=ev_fold_pred_u,data=getData(ev_fold,"unknown"),byUser=FALSE)
+#Pearson
+ev_fold_rec1_u<-Recommender(data=getData(ev_fold,"train"), method="UBCF", parameter=list(method="pearson"))
+ev_fold_pred1_u<-predict(object=ev_fold_rec1_u,newdata=getData(ev_fold,"known"),n=5, type="ratings")
+UBCF_fold_pearson<-calcPredictionAccuracy(x=ev_fold_pred1_u,data=getData(ev_fold,"unknown"),byUser=FALSE)
+
+#results
+eval_accuracy_cosine_u<-rbind(UBCF_split_cosine,UBCF_boot_cosine,UBCF_fold_cosine)
+eval_accuracy_pearson_u<-rbind(UBCF_split_pearson,UBCF_boot_pearson,UBCF_fold_pearson)
+
+eval_accuracy_cosine_u
+eval_accuracy_pearson_u
+```
+
+Table below shows accuracy measures on the UCBF algorithm.
+
+```{r}
+eval_accuracy_cosine_u
+eval_accuracy_pearson_u
+```
+
+Results     
+- Similarities:   
+Pearson method yields lower errors than using Cosine.
+
+- Train/Test split method:
+Using Cosine similarity measure, bootstrapping method yields lower errors.     
+Using Pearson similarity measure, split method yields lower errors.
+
+- In general,the split-pearson combination is the recommender with lowest prediction error.
+
+
+
+
