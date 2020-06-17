@@ -399,24 +399,6 @@ eval_accuracy_cosine<-rbind(IBCF_split_cosine,IBCF_boot_cosine,IBCF_fold_cosine)
 eval_accuracy_pearson<-rbind(IBCF_split_pearson,IBCF_boot_pearson,IBCF_fold_pearson)
 ```
 
-Table below shows accuracy measures on the ICBF algorithm.
-
-```{r}
-eval_accuracy_cosine
-eval_accuracy_pearson
-```
-
-Results     
-- Similarities:   
-Pearson method yields lower errors than using Cosine.
-
-- Train/Test split method:
-Using Cosine similarity measure, k-fold splitting method yields lower errors.     
-Using Pearson similarity measure, split method yields lower errors.
-
-- In general,the split-pearson combination is the recommender with lowest prediction error.
-
-
 # UBCF
 
 Repeating the same procedure above for the UBCF algorithm, processing time could be slow.
@@ -457,9 +439,29 @@ UBCF_fold_pearson<-calcPredictionAccuracy(x=ev_fold_pred1_u,data=getData(ev_fold
 eval_accuracy_cosine_u<-rbind(UBCF_split_cosine,UBCF_boot_cosine,UBCF_fold_cosine)
 eval_accuracy_pearson_u<-rbind(UBCF_split_pearson,UBCF_boot_pearson,UBCF_fold_pearson)
 
-eval_accuracy_cosine_u
-eval_accuracy_pearson_u
+
 ```
+
+
+
+# Conclusion
+
+Table below shows accuracy measures on the ICBF algorithm.
+
+```{r}
+eval_accuracy_cosine
+eval_accuracy_pearson
+```
+
+Results     
+- Similarities:   
+Pearson method yields lower errors than using Cosine.
+
+- Train/Test split method:
+Using Cosine similarity measure, k-fold splitting method yields lower errors.     
+Using Pearson similarity measure, split method yields lower errors.
+
+- In general,the split-pearson combination is the recommender with lowest prediction error.
 
 Table below shows accuracy measures on the UCBF algorithm.
 
@@ -478,6 +480,4 @@ Using Pearson similarity measure, split method yields lower errors.
 
 - In general,the split-pearson combination is the recommender with lowest prediction error.
 
-
-
-
+Comparing the results of UBCF with IBCF, UBCF accuracy is higher than IBCF. On both methods, the split-pearson combination is the most accurate amongst all combinations.
