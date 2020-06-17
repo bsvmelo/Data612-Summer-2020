@@ -458,10 +458,10 @@ Results
 Pearson method yields lower errors than using Cosine.
 
 - Train/Test split method:
-Using Cosine similarity measure, k-fold splitting method yields lower errors.     
-Using Pearson similarity measure, split method yields lower errors.
+Using Cosine similarity measure, bootstrapping splitting method yields lower errors.     
+Using Pearson similarity measure, bootstrapping method yields lower errors.
 
-- In general,the split-pearson combination is the recommender with lowest prediction error.
+- In general,the bootstrapping-pearson combination is the recommender with lowest prediction error.
 
 Table below shows accuracy measures on the UCBF algorithm.
 
@@ -472,12 +472,12 @@ eval_accuracy_pearson_u
 
 Results     
 - Similarities:   
-Pearson method yields lower errors than using Cosine.
+Cosine method yields lower errors than using pearson
 
 - Train/Test split method:
-Using Cosine similarity measure, bootstrapping method yields lower errors.     
-Using Pearson similarity measure, split method yields lower errors.
+Using Cosine similarity measure, k-fold method yields lower errors.     
+Using Pearson similarity measure, k-fold method yields lower errors.
 
-- In general,the split-pearson combination is the recommender with lowest prediction error.
+- In general,the k-fold-pearson combination is the recommender with lowest prediction error.
 
-Comparing the results of UBCF with IBCF, UBCF accuracy is higher than IBCF. On both methods, the split-pearson combination is the most accurate amongst all combinations.
+Comparing the results of UBCF with IBCF, UBCF accuracy is higher than IBCF. On ICBF, the bootstrapping-pearson combination is the most accurate while on UCBF the k-fold-pearson combinate yields lower errors.
