@@ -1,0 +1,43 @@
+---
+title: "Research Discussion Assignment 1"
+author: "Bruno de Melo"
+date: "6/19/2020"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+```
+```{r}
+knitr::opts_knit$set(base.url='https://github.com/bsvmelo/Data612-Summer-2020/')
+```
+
+## Research Discussion Assignment 1
+
+Question: Now that we have covered basic techniques for recommender systems, choose one commercial recommender and describe how you think it works (content-based, collaborative filtering, etc). Does the technique deliver a good experience or are the recommendations off-target?
+
+Answer:             
+
+![](https://github.com/bsvmelo/Data612-Summer-2020/raw/master/Pic2.jpeg)
+
+Wayfair.com uses a variety of different recommendation techniques, including traditional collaborative filtering and content-based but the most impressive for me is the “Visual Search” which allows shoppers to take photos and search the Wayfair catalogue for similar items. I have used it several times, as a new homeowner, and found it to be very fast, precise, accurate and extremely helpful.
+
+It is a sort of content-based system in that it recommends based on the similarity of images of products in the Wayfair product catalogue. Recommendations are delivered very fast and the algorithm is described to use a deep convolutional neural network. Visual Search generates complex content based features by performing calculations on user-supplied imagery on site in real time. It gives not only recommendations based on a similar type, say other similar sofas, but also displays other items that usually go together with a sofa, like a rug, or a lamp, etc. In case the picture has more than one piece of furniture, users can also highlight a specific part of the picture and a visual search is also carried out. See example below:
+
+![Picture 1](https://github.com/bsvmelo/Data612-Summer-2020/raw/master/pic1.jpeg)
+
+Visual Search is also used to enrich the traditional content-based recommendation system, called Visual Recommendations. The main assumption made by the Visual Recommendations algorithm is that customers want to see products that are visually similar to the products they have interacted with. The motivating factor for the design of this recommendation algorithm is to first tackle the inherent problems associated with collaborative filtering in that it preserves style preference across class due to their inherent separation on class due to customer browsing behavior. Second, to develop an algorithm capable of serving meaningful recommendations that preserve customer style preferences across classes. 
+
+Attacks on Recommender System
+
+Question: Read the article below and consider how to handle attacks on recommender systems. Can you think of a similar example where a collective effort to alter the workings of content recommendations have been successful? How would you design a system to prevent this kind of abuse?
+Travis M. Andrews, The Washington Post (2017): Wisdom of the crowd? IMDb users gang up on Christian Bale’s new movie before it even opens.
+
+Answer:
+There are plenty of what is called “review bombing” examples on the web, like here: https://www.inverse.com/article/53523-captain-marvel-rotten-tomatoes-review-bombing-explained. Or here: https://www.polygon.com/2017/12/18/16792184/star-wars-the-last-jedi-rotten-tomatoes-review-bomb
+
+What website like rottentomatoes.com did to prevent such coordinated attacks was to no longer allow users to comment on or register early anticipation for movies.
+
+Another solution would be to display ratings histogram history or timeline, so that users are aware how the current ratings distribution changes overtime. This was implemented by game pages on Steam, for example, after a similar attack, https://www.polygon.com/2017/9/19/16336298/steam-review-bombs-campo-santo-firewatch-pewdiepie
+
