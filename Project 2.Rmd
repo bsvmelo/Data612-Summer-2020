@@ -1,56 +1,47 @@
 ---
 title: "DATA 612 - Summer 2020 - Project 2 | Content-Based and Collaborative Filtering"
 author: "Bruno de Melo and Leland Randles"
-date: "June 13, 2020"
+date: "June 18, 2020"
 output: 
   html_document:
     toc: true # table of content true
     toc_float: true
-    toc_depth: 3  # upto three depths of headings (specified by #, ## and ###)
-    number_sections: true  ## if you want number sections at each table header
-    theme: united  # many options for theme, this one is my favorite.
+    toc_depth: 3  # up to three depths of headings (specified by #, ## and ###)
+    number_sections: true  # if you want number sections at each table header
+    theme: united  # many options for theme, this one is my favorite
     highlight: tango  # specifies the syntax highlighting style
     #css: my.css   # you can add your custom css, should be in same folder
 ---
 
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
-
 if(!require(tidyverse)) install.packages("tidyverse",repos = "http://cran.us.r-project.org")
 if(!require(recommenderlab)) install.packages("recommenderlab",repos = "http://cran.us.r-project.org")
-
-
 library("tidyverse")
 library("recommenderlab")
-
-
 ```
 
 # Introduction - User-User and Item-Item Collaborative Filtering
 <a href="#top"> Back To Top </a>  
 
-This recommender system recommends is baseed on Amazon ratings in the Kindle store. It contains 5,722,988 ratings and includes user,item,rating,timestamp. It was extracted from: https://nijianmo.github.io/amazon/index.html
+This recommender system was contructed using Amazon ratings from the Kindle store. It contains 5,722,988 ratings (with 493,849 unique users and 2,409,262 unique items). The data elements include User, Item, Rating, and Timestamp. The dataset can be extracted from the following web site: https://nijianmo.github.io/amazon/index.html
 
-# Data Loading and conversion to a User-Item Rating Matrix
+# Load Data and Convert to User-Item Rating Matrix
 
 ```{r}
 # seeding
 set.seed(1234)
-
 # loading dataset
-dataset<- read_csv("http://deepyeti.ucsd.edu/jianmo/amazon/categoryFilesSmall/Kindle_Store.csv", col_names= c("User","Item","Rating","TimeStamp"), col_types = list(col_character(), col_character(),col_double(),col_double())) %>% data.frame()
-
+dataset <- read_csv("http://deepyeti.ucsd.edu/jianmo/amazon/categoryFilesSmall/Kindle_Store.csv", col_names= c("User","Item","Rating","TimeStamp"), col_types = list(col_character(), col_character(),col_double(),col_double())) %>% data.frame()
 # excluding time stamp column, removing duplicates
-m<-dataset[,c(1:3)]
+m <- dataset[,c(1:3)]
 # removing duplicates
-m_dist<-distinct(m)
-
-# coersing to realRatingMatrix type
-r<-as(m_dist,"realRatingMatrix")
-
+m_dist <- distinct(m)
+# coercing into realRatingMatrix
+r <- as(m_dist,"realRatingMatrix")
 ```
 
-Dataset was correctly coersed to a user-item matrix by *recommenderlab* and has dimensions: `r dim(r)`.
+The dataset was successfully coerced into a user-item matrix by *recommenderlab* with the following dimensions: `r dim(r)`.
 
 # Exploratory Data Analysis
 <a href="#top"> Back To Top </a>  
@@ -59,425 +50,382 @@ This a large dataset. Let's look at the ratings range and count them.
 
 ```{r}
 # Ratings range
-vec<-as.vector(getRatings(r))
+vec <- as.vector(getRatings(r))
 unique(vec)
-table_ratings<-table(vec)
+table_ratings <- table(vec)
 table_ratings
 ```
 
-There are several ratings greater than 5, let's remove those ratings. 
+The ratings should be 1, 2, 3, 4 or 5, so any values not between 1 and 5 were removed:  
 
 ```{r}  
-md<-as(r,"data.frame")
-md<-subset(md,rating<=5)
-md<-subset(md,rating>0)
-# coersing to realRatingMatrix type
-rr<-as(md,"realRatingMatrix")
-vecc<-as.vector(getRatings(rr))
+md <- as(r, "data.frame")
+md <- subset(md, rating<=5)
+md <- subset(md, rating>0)
+# coercing back into realRatingMatrix type
+rr <- as(md, "realRatingMatrix")
+vecc <- as.vector(getRatings(rr))
 unique(vecc)
-table_ratings<-table(vecc)
+table_ratings <- table(vecc)
 table_ratings
 ```
 
-All ratings greater than 5 have been removed. Let's plot the ratings histogram.
+Looking at the ratings histogram:  
 
 ```{r} 
-qplot(vecc) + stat_bin(binwidth = 0.1) +ggtitle("Distribution of ratings")
+qplot(vecc) + stat_bin(binwidth = 0.1) + ggtitle("Distribution of Ratings")
 ```
-
-
-Dataset is rather skewed to higher ratings, 4 or 5, which indicates a biased dataset.
-
-
-We can also visualize the matrix by building a heatmap whose colors represent the ratings. Given size, let's define for the top 0.001%:    
-
+  
+The dataset is skewed to the higher ratings (4 or 5), which is indicative of a biased dataset.  
+  
+We can also visualize the matrix by building a heatmap to represent the ratings. Given the size of the dataset, let's create the heatmap using the top 0.001% of Users and Items:      
+  
 ```{r}
 #minimum number of items reviewed per user
-min_n_item<-quantile(rowCounts(rr),0.999)
+min_n_item <- quantile(rowCounts(rr),0.999)
 min_n_item
-
 #minimum number of reviews per items 
-min_n_users<-quantile(colCounts(rr),0.999)
+min_n_users <- quantile(colCounts(rr),0.999)
 min_n_users
 ```
 
-Let's build a heatmap matching this criteria:
+As you can see from the heatmap below, even limiting it to the top 0.001% of the Users and Items, the matrix is still very sparse:  
 
 ```{r}
-image(rr[rowCounts(rr)>min_n_item,colCounts(rr)>min_n_users],main="Heatmap of top 0.001% of users and items")
+image(rr[rowCounts(rr) > min_n_item, colCounts(rr) > min_n_users], main = "Heatmap of top 0.001% of users and items")
 ```
-
-As can be seen, even with only 0.001% of the dataset, matrix is still very sparse.
-
-# Subsetting the most relevant data
-
-To account for the matrix sparseness, let's order by the top 50 users with most reviews and top 50 most rated items.
-
-Let's visualize a histogram of top 50 items with most reviews
+  
+# Subsetting the Most Relevant Data
+  
+To account for the matrix sparseness, let's order by the top 50 users with most reviews and top 50 most rated items.  
+  
+Then, let's plot a histogram for the top 50 items with the most reviews:  
 
 ```{r}
 # distribution of items rated
-count_rating<-colCounts(rr)
-table_count<-data.frame(its=names(count_rating), reviews=count_rating)
-table_count<-table_count[order(table_count$reviews,decreasing=TRUE),]
-table_count[1:50,] %>% ggplot() +geom_bar(aes(x=reorder(its,-reviews),y=reviews),stat="identity")+xlab("Items")+theme(axis.text.x=element_blank())
-
+count_rating <- colCounts(rr)
+table_count <- data.frame(its = names(count_rating), reviews = count_rating)
+table_count <- table_count[order(table_count$reviews, decreasing = TRUE),]
+table_count[1:50,] %>% ggplot() + geom_bar(aes(x = reorder(its, -reviews), y = reviews), stat = "identity") + xlab("Items") + theme(axis.text.x = element_blank())
 ```
 
 Just a handful of items have more than 1,000 ratings, while most of the top 50 reviewed items have around 600 ratings.
 
-Let's visualize histogram of top 50 users with most reviews.
+Next, a histogram of the top 50 users with most reviews:  
 
 ```{r}
 # number of users with most reviews
-count_users<-rowCounts(rr)
-table_count1<-data.frame(users=names(count_users), reviews=count_users)
-table_count1<-table_count1[order(table_count1$reviews,decreasing=TRUE),]
-table_count1[1:50,] %>% ggplot() +geom_bar(aes(x=reorder(users,-reviews),y=reviews),stat="identity")+xlab("Users")+theme(axis.text.x=element_blank())
+count_users <- rowCounts(rr)
+table_count1 <- data.frame(users = names(count_users), reviews = count_users)
+table_count1 <- table_count1[order(table_count1$reviews,decreasing = TRUE),]
+table_count1[1:50,] %>% ggplot() + geom_bar(aes(x = reorder(users, -reviews), y = reviews), stat = "identity") + xlab("Users") + theme(axis.text.x = element_blank())
 ```
 
 A handful of users have more than 5,000 reviews, while most of the top 100 users have around 1,000 reviews.
 
-# Subset definition
+# Subset Definition
 
 Let's define a subset containing:           
-- users who have rated more than 100 but less than 500 items      
-- items that have been reviewed at least 5 times but less than 25 times.
-
-
+* users who have rated more than 100 but less than 500 items      
+* items that have been reviewed at least 5 times but less than 25 times.
+  
 ```{r}
 # Users subsetting
-ratings<-rr[rowCounts(rr)>100,] 
+ratings <- rr[rowCounts(rr) > 100,] 
 ratings
-ratings<-ratings[rowCounts(ratings)<500,] 
+ratings <- ratings[rowCounts(ratings) < 500,] 
 ratings
 ```
 
 Let's check the number of items that have been rated. There are many items that did not receive any ratings, let's count them.
 
 ```{r}
-n_items<-colCounts(ratings)
-n_items_0<-n_items[n_items==0]
-#table_items<-table(n_items)
-#table_items
-
-
+n_items <- colCounts(ratings)
+n_items_0 <- n_items[n_items==0]
 ```
 
-There are `r n_items_0` items from a total of `r n_items` that have no reviews, so let's remove them and narrow the data set to items that have been reviewed at least 5 times but less than 25 times.
-
-
+There are `r n_items_0` items from a total of `r n_items` that have no reviews, so let's remove them and narrow the data set to items that have been reviewed at least 5 times but less than 25 times.  
+  
 ```{r}
 # Items subsetting
-ratings<-ratings[,colCounts(ratings)>5] 
+ratings <- ratings[,colCounts(ratings) > 5] 
 ratings
-
-ratings<-ratings[,colCounts(ratings)<25] 
+ratings <- ratings[,colCounts(ratings) < 25] 
 ratings
-
 ```
-
-Let's check whether there might be users who didn't rate any item. There are `r sum(rowCounts(ratings)==0)` users with this criteria, let's remove them.
-
+  
+Let's check whether there might be users who didn't rate any item. There are `r sum(rowCounts(ratings) == 0)` users with this criteria. Let's remove them.  
+  
 ```{r}
-ratings<-ratings[rowCounts(ratings)>=5,] 
+ratings <- ratings[rowCounts(ratings) >= 5,] 
 ratings
 ```
 
 
-# Heatmap visualization
+# Heatmap Visualization
 
 Visualization of the top 1 percent of users and items in the next subset matrix.
 
 ```{r}
-min_inst<-quantile(rowCounts(ratings),0.99)
-min_users<-quantile(colCounts(ratings),0.99)
-
-# image(ratings,main="Subset Heatmap")
-image(ratings[rowCounts(ratings)>min_inst,colCounts(ratings)>min_users],main="Heatmap of top users and items")
-
+min_inst <- quantile(rowCounts(ratings), 0.99)
+min_users <- quantile(colCounts(ratings), 0.99)
+image(ratings[rowCounts(ratings) > min_inst, colCounts(ratings) > min_users], main="Heatmap of Top Users and Items")
 ```
-
-
-# Normalizing the data
-
+  
+# Normalizing the data  
+  
 Given most ratings are either 4 or 5, normalization can remove this bias.
 
 ```{r}
-ratings_norm<-normalize(ratings)
+ratings_norm <- normalize(ratings)
 ```
 
-Following plot shows the heatmap of the top users and items, after normalization.
+A heatmap of the top users and items - after normalization - is shown below:  
 
 ```{r}
-min_inst<-quantile(rowCounts(ratings_norm),0.99)
-min_users<-quantile(colCounts(ratings_norm),0.99)
-
-#image(ratings,main="Subset Heatmap")
-image(ratings_norm[rowCounts(ratings_norm)>min_inst,colCounts(ratings_norm)>min_users],main="Heatmap of top users and items - with normalization")
-
-```
-
-
-# Binarizing the data
-
-We will define a matrix where 1 is assigned to ratings above 3 and 0 otherwise.
+min_inst <- quantile(rowCounts(ratings_norm), 0.99)
+min_users <- quantile(colCounts(ratings_norm), 0.99)
+image(ratings_norm[rowCounts(ratings_norm) > min_inst, colCounts(ratings_norm)>min_users], main="Heatmap of Top Users and Items - With Normalization")
+```  
+  
+# Binarizing the Data  
+  
+We will define a matrix where 1 is assigned to ratings above 3 and 0 otherwise.  
 
 ```{r}
-ratings_good<-binarize(ratings, minRating=3)
+ratings_good <- binarize(ratings, minRating = 3)
 ```
-
-Following plot shows the heatmap of the top users and movies, after binarization
-
+  
+A heatmap of the top users and items - after binarization - is shown below:  
+  
 ```{r}
-min_itm_bin<-quantile(rowCounts(ratings),0.99)
-min_users_bin<-quantile(colCounts(ratings),0.99)
+min_itm_bin <- quantile(rowCounts(ratings), 0.99)
+min_users_bin <- quantile(colCounts(ratings),0.99)
+image(ratings_good[rowCounts(ratings) > min_itm_bin, colCounts(ratings) > min_users_bin], main = "Heatmap of Top Users and Items - With Binarization")
+```  
+  
+# Similarity Between Users and Between Items
 
-image(ratings_good[rowCounts(ratings)>min_itm_bin,colCounts(ratings)>min_users_bin],main="Heatmap of top users and items - with binarization")
-
-```
-
-# Similarity between users and between items
-
-Package *recommenderlab* contains a function that compute similarities based on cosine, pearson and jaccard methods.
-
-Let's look at similarities between users and items using these methods.
-
-#  Similarities between top 1% users
+The *recommenderlab* package contains a function that computes similarities based on cosine, pearson and jaccard methods.  
+  
+Let's look at similarities between users and items using these methods.  
+  
+# Similarities Between Top 1% Users
 
 Let's compare the Non-normalized and the normalized datasets, under the cosine distance method.
 
 ```{r}
 # non-normalized dataset
-sim_users_non<-similarity(ratings[rowCounts(ratings)>min_inst,colCounts(ratings)>min_users], method = "cosine", which="users")
-image(as.matrix(sim_users_non, main="User Similarity - Non-Normalized DataSet"))
-
+sim_users_non <- similarity(ratings[rowCounts(ratings) > min_inst, colCounts(ratings) > min_users], method = "cosine", which = "users")
+image(as.matrix(sim_users_non, main = "User Similarity - Non-Normalized DataSet"))
 ```
 
-This matrix looks too red, meaning that most users are very similar to each other.
-
-
+This matrix is a red straight line, meaning that most users are very similar to each other.  
+  
 ```{r}
 # Normalized dataset
-sim_users_norm<-similarity(ratings_norm[rowCounts(ratings)>min_inst,colCounts(ratings)>min_users], method = "cosine", which="users")
-image(as.matrix(sim_users_norm, main="User Similarity - Normalized DataSet"))
-```
-
-Normalized dataset looks more similar than the non-normalized dataset.
-
-Let's visualize the binarized dataset, using the *jaccard* method.
-
+sim_users_norm <- similarity(ratings_norm[rowCounts(ratings) > min_inst, colCounts(ratings) > min_users], method = "cosine", which = "users")
+image(as.matrix(sim_users_norm, main = "User Similarity - Normalized DataSet"))
+```  
+  
+The normalized dataset looks more similar than the non-normalized dataset.  
+  
+Let's visualize the binarized dataset, using the *jaccard* method.  
+  
 ```{r}
 # Binarized dataset
-sim_users_bin<-similarity(ratings_good[rowCounts(ratings)>min_itm_bin,colCounts(ratings)>min_users_bin], method = "jaccard", which="users")
-image(as.matrix(sim_users_bin, main="User Similarity- Binarized DataSet"))
+sim_users_bin <- similarity(ratings_good[rowCounts(ratings) > min_itm_bin, colCounts(ratings) > min_users_bin], method = "jaccard", which = "users")
+image(as.matrix(sim_users_bin, main = "User Similarity - Binarized DataSet"))
 ```
 
-Binarized dataset looks less similar than the non-normalized and normalized datasets.
-
-#  Similarities between top 1% items
-
-As before, let's compare similarities between three datasets: non-normalized, normalized and binarized sets.
-
+The binarized dataset looks less similar than the non-normalized and normalized datasets.  
+  
+#  Similarities Between Top 1% Items  
+  
+As before, let's compare similarities between three datasets: non-normalized, normalized and binarized sets.  
+  
 ```{r}
 # non-normalized dataset
-sim_item_non<-similarity(ratings[rowCounts(ratings)>min_inst,colCounts(ratings)>min_users], method = "cosine", which="items")
-image(as.matrix(sim_item_non, main="Item Similarity - Non-Normalized DataSet"))
-
+sim_item_non <- similarity(ratings[rowCounts(ratings) > min_inst, colCounts(ratings) > min_users], method = "cosine", which = "items")
+image(as.matrix(sim_item_non, main = "Item Similarity - Non-Normalized DataSet"))
 ```
-
-Using the non-normalized dataset, items looks very similar to each other.
-
-
+  
+Using the non-normalized dataset, items looks very similar to each other.  
+  
 ```{r}
 # normalized dataset
-sim_item_norm<-similarity(ratings_norm[rowCounts(ratings)>min_inst,colCounts(ratings)>min_users], method = "cosine", which="items")
-image(as.matrix(sim_item_norm, main="Item Similarity - Normalized DataSet"))
-
+sim_item_norm <- similarity(ratings_norm[rowCounts(ratings) > min_inst, colCounts(ratings)>min_users], method = "cosine", which = "items")
+image(as.matrix(sim_item_norm, main = "Item Similarity - Normalized DataSet"))
 ```
 
 This matrix looks like the previous one.
 
 ```{r}
 # binarized dataset
-sim_item_bin<-similarity(ratings_good[rowCounts(ratings)>min_itm_bin,colCounts(ratings)>min_users_bin], method = "jaccard", which="items")
-image(as.matrix(sim_item_bin, main="Item Similarity - Binarized DataSet"))
-
-```
-
-As before, the binarized dataset is very similar.
-
-# Rating Prediction using different methodologies
+sim_item_bin <- similarity(ratings_good[rowCounts(ratings) > min_itm_bin, colCounts(ratings) > min_users_bin], method = "jaccard", which = "items")
+image(as.matrix(sim_item_bin, main = "Item Similarity - Binarized DataSet"))
+```  
+  
+As before, the binarized dataset is very similar.  
+  
+# Rating Prediction Using Different Methodologies
 <a href="#top"> Back To Top </a> 
 
-Given size, let's use the top 10% to work with ratings prediction.
+Given the size of the dataset, we'll use the top 10% to work with ratings prediction.  
+
 ```{r}
-min_it<-quantile(rowCounts(ratings),0.90)
-min_users<-quantile(colCounts(ratings),0.90)
-
-redux<-ratings[rowCounts(ratings)>min_it,colCounts(ratings)>min_users]
-
-```
-
-Two methods will be used, IBCF and UBCF.
-
-# Item-based collaborative filtering - IBCF
-
-IBCF's algorithm is based on an user's purchase and recommends similar items.
-
-# User-based collaborative filtering - UBCF
-
-UBCF's algorithm is based on which items are the most preferred by similar users.
-
-# Splitting data set
-
-First step is to split dataset into training and testing datasets.     
-
-Let's use a 90/10 relation.
-
-Function *evaluationScheme* will be used and it normalizes data before splitting. We will be using three methods to split the data: split, bootstrap, and k-fold.
-
+min_it <- quantile(rowCounts(ratings), 0.90)
+min_users <- quantile(colCounts(ratings), 0.90)
+redux <- ratings[rowCounts(ratings) > min_it, colCounts(ratings) > min_users]
+```  
+  
+Two methods will be used, IBCF and UBCF.  
+  
+# Item-Based Collaborative Filtering - IBCF  
+  
+IBCF's algorithm is based on a user's purchase history and recommends similar items.  
+  
+# User-Based collaborative Filtering - UBCF  
+  
+UBCF's algorithm is based on which items are the most preferred by similar users.  
+  
+# Splitting the Dataset  
+  
+The first step is  to split the dataset into training and testing datasets.  
+  
+We'll use a 90/10 split.  
+  
+The function *evaluationScheme* will be used as it normalizes data before splitting. We will be using three methods to split the data: split, bootstrap, and k-fold.  
+  
 ```{r}
 #Split method
-ev_split<-evaluationScheme(redux,method="split",train=0.9,given=3,goodRating=3)
+ev_split <- evaluationScheme(redux, method = "split", train = 0.9, given = 3, goodRating = 3)
 ev_split
-
 #Bootstrap method
-ev_boot<-evaluationScheme(redux,method="bootstrap",k=1,train=0.9,given=3,goodRating=3)
+ev_boot <- evaluationScheme(redux, method = "bootstrap", k = 1, train = 0.9, given = 3, goodRating = 3)
 ev_boot
-
 #k-fold method
-ev_fold<-evaluationScheme(redux,method="cross-validation",k=5,train=0.9,given=3,goodRating=3)
+ev_fold <- evaluationScheme(redux, method = "cross-validation", k = 5, train = 0.9, given = 3, goodRating = 3)
 ev_fold
+```  
 
-```
-
-# Building recommendation model
-
-
-We will build a recommendation model for each algorithm, IBCF and UBCF, using three different ways to split the datasets (split, bootstraping and k-fold), and two different simililarity methods, Cosine and Pearson. 
-
-Note that code execution below is somehow slow.
-
-# IBCF
+# Building the Recommendation Model  
+  
+We will build a recommendation model for each algorithm, IBCF and UBCF, using three different ways to split the datasets (split, bootstraping and k-fold) and two different simililarity methods, Cosine and Pearson.  
+  
+(Note that the code below takes a while to execute.)  
+  
+# IBCF  
+  
 ```{r}
 #Building the models
-
 #IBCF
 #split
 #Cosine
-ev_split_rec<-Recommender(data=getData(ev_split,"train"), method="IBCF", parameter=list(method="cosine"))
-ev_split_pred<-predict(object=ev_split_rec,newdata=getData(ev_split,"known"),n=5, type="ratings")
-IBCF_split_cosine<-calcPredictionAccuracy(x=ev_split_pred,data=getData(ev_split,"unknown"),byUser=FALSE)
+ev_split_rec <- Recommender(data = getData(ev_split, "train"), method = "IBCF", parameter = list(method = "cosine"))
+ev_split_pred <- predict(object = ev_split_rec, newdata = getData(ev_split, "known"), n = 5, type = "ratings")
+IBCF_split_cosine <- calcPredictionAccuracy(x = ev_split_pred, data = getData(ev_split, "unknown"), byUser = FALSE)
 #Pearson
-ev_split_rec1<-Recommender(data=getData(ev_split,"train"), method="IBCF", parameter=list(method="pearson"))
-ev_split_pred1<-predict(object=ev_split_rec1,newdata=getData(ev_split,"known"),n=5, type="ratings")
-IBCF_split_pearson<-calcPredictionAccuracy(x=ev_split_pred1,data=getData(ev_split,"unknown"),byUser=FALSE)
-
+ev_split_rec1 <- Recommender(data = getData(ev_split, "train"), method = "IBCF", parameter = list(method = "pearson"))
+ev_split_pred1 <- predict(object=ev_split_rec1, newdata = getData(ev_split, "known"), n = 5, type = "ratings")
+IBCF_split_pearson <- calcPredictionAccuracy(x = ev_split_pred1, data = getData(ev_split, "unknown"), byUser = FALSE)
 #bootstrapping
 #Cosine
-ev_boot_rec<-Recommender(data=getData(ev_boot,"train"), method="IBCF", parameter=list(method="cosine"))
-ev_boot_pred<-predict(object=ev_boot_rec,newdata=getData(ev_boot,"known"),n=5, type="ratings")
-IBCF_boot_cosine<-calcPredictionAccuracy(x=ev_boot_pred,data=getData(ev_boot,"unknown"),byUser=FALSE)
+ev_boot_rec <- Recommender(data = getData(ev_boot, "train"), method = "IBCF", parameter = list(method = "cosine"))
+ev_boot_pred <- predict(object = ev_boot_rec, newdata = getData(ev_boot, "known"), n = 5, type = "ratings")
+IBCF_boot_cosine <- calcPredictionAccuracy(x = ev_boot_pred, data = getData(ev_boot, "unknown"), byUser = FALSE)
 #Pearson
-ev_boot_rec1<-Recommender(data=getData(ev_boot,"train"), method="IBCF", parameter=list(method="pearson"))
-ev_boot_pred1<-predict(object=ev_boot_rec1,newdata=getData(ev_boot,"known"),n=5, type="ratings")
-IBCF_boot_pearson<-calcPredictionAccuracy(x=ev_boot_pred1,data=getData(ev_boot,"unknown"),byUser=FALSE)
-
+ev_boot_rec1 <- Recommender(data = getData(ev_boot, "train"), method = "IBCF", parameter = list(method = "pearson"))
+ev_boot_pred1 <- predict(object = ev_boot_rec1, newdata = getData(ev_boot, "known"), n = 5, type = "ratings")
+IBCF_boot_pearson <- calcPredictionAccuracy(x = ev_boot_pred1, data = getData(ev_boot, "unknown"), byUser = FALSE)
 #k-fold
 #Cosine
-ev_fold_rec<-Recommender(data=getData(ev_fold,"train"), method="IBCF", parameter=list(method="cosine"))
-ev_fold_pred<-predict(object=ev_fold_rec,newdata=getData(ev_fold,"known"),n=5, type="ratings")
-IBCF_fold_cosine<-calcPredictionAccuracy(x=ev_fold_pred,data=getData(ev_fold,"unknown"),byUser=FALSE)
+ev_fold_rec <- Recommender(data = getData(ev_fold, "train"), method = "IBCF", parameter = list(method = "cosine"))
+ev_fold_pred <- predict(object = ev_fold_rec, newdata = getData(ev_fold, "known"), n = 5, type = "ratings")
+IBCF_fold_cosine <- calcPredictionAccuracy(x = ev_fold_pred, data = getData(ev_fold, "unknown"), byUser = FALSE)
 #Pearson
-ev_fold_rec1<-Recommender(data=getData(ev_fold,"train"), method="IBCF", parameter=list(method="pearson"))
-ev_fold_pred1<-predict(object=ev_fold_rec1,newdata=getData(ev_fold,"known"),n=5, type="ratings")
-IBCF_fold_pearson<-calcPredictionAccuracy(x=ev_fold_pred1,data=getData(ev_fold,"unknown"),byUser=FALSE)
-
+ev_fold_rec1 <- Recommender(data = getData(ev_fold, "train"), method = "IBCF", parameter = list(method = "pearson"))
+ev_fold_pred1 <- predict(object = ev_fold_rec1, newdata = getData(ev_fold, "known"), n = 5, type = "ratings")
+IBCF_fold_pearson <- calcPredictionAccuracy(x = ev_fold_pred1, data = getData(ev_fold, "unknown"), byUser = FALSE)
 #results
-eval_accuracy_cosine<-rbind(IBCF_split_cosine,IBCF_boot_cosine,IBCF_fold_cosine)
-eval_accuracy_pearson<-rbind(IBCF_split_pearson,IBCF_boot_pearson,IBCF_fold_pearson)
-```
-
-# UBCF
-
-Repeating the same procedure above for the UBCF algorithm, processing time could be slow.
-
+eval_accuracy_cosine <- rbind(IBCF_split_cosine, IBCF_boot_cosine, IBCF_fold_cosine)
+eval_accuracy_pearson <- rbind(IBCF_split_pearson, IBCF_boot_pearson, IBCF_fold_pearson)
+```  
+  
+# UBCF  
+  
+Repeating the same procedure above for the UBCF algorithm. (Again, this code takes a while to execute). 
+  
 ```{r}
 #UBCF
 #split
 #Cosine
-ev_split_rec_u<-Recommender(data=getData(ev_split,"train"), method="UBCF", parameter=list(method="cosine"))
-ev_split_pred_u<-predict(object=ev_split_rec_u,newdata=getData(ev_split,"known"),n=5, type="ratings")
-UBCF_split_cosine<-calcPredictionAccuracy(x=ev_split_pred_u,data=getData(ev_split,"unknown"),byUser=FALSE)
+ev_split_rec_u <- Recommender(data = getData(ev_split, "train"), method = "UBCF", parameter = list(method = "cosine"))
+ev_split_pred_u <- predict(object = ev_split_rec_u, newdata = getData(ev_split, "known"), n = 5, type = "ratings")
+UBCF_split_cosine <- calcPredictionAccuracy(x = ev_split_pred_u, data = getData(ev_split, "unknown"), byUser = FALSE)
 #Pearson
-ev_split_rec1_u<-Recommender(data=getData(ev_split,"train"), method="UBCF", parameter=list(method="pearson"))
-ev_split_pred1_u<-predict(object=ev_split_rec1_u,newdata=getData(ev_split,"known"),n=5, type="ratings")
-UBCF_split_pearson<-calcPredictionAccuracy(x=ev_split_pred1_u,data=getData(ev_split,"unknown"),byUser=FALSE)
-
+ev_split_rec1_u <- Recommender(data = getData(ev_split, "train"), method = "UBCF", parameter = list(method = "pearson"))
+ev_split_pred1_u <- predict(object = ev_split_rec1_u, newdata = getData(ev_split, "known"), n = 5, type = "ratings")
+UBCF_split_pearson <- calcPredictionAccuracy(x = ev_split_pred1_u, data = getData(ev_split, "unknown"), byUser = FALSE)
 #bootstrapping
 #Cosine
-ev_boot_rec_u<-Recommender(data=getData(ev_boot,"train"), method="UBCF", parameter=list(method="cosine"))
-ev_boot_pred_u<-predict(object=ev_boot_rec_u,newdata=getData(ev_boot,"known"),n=5, type="ratings")
-UBCF_boot_cosine<-calcPredictionAccuracy(x=ev_boot_pred_u,data=getData(ev_boot,"unknown"),byUser=FALSE)
+ev_boot_rec_u <- Recommender(data = getData(ev_boot, "train"), method = "UBCF", parameter = list(method = "cosine"))
+ev_boot_pred_u <- predict(object = ev_boot_rec_u, newdata = getData(ev_boot, "known"), n = 5, type = "ratings")
+UBCF_boot_cosine <- calcPredictionAccuracy(x = ev_boot_pred_u, data = getData(ev_boot, "unknown"), byUser = FALSE)
 #Pearson
-ev_boot_rec1_u<-Recommender(data=getData(ev_boot,"train"), method="UBCF", parameter=list(method="pearson"))
-ev_boot_pred1_u<-predict(object=ev_boot_rec1_u,newdata=getData(ev_boot,"known"),n=5, type="ratings")
-UBCF_boot_pearson<-calcPredictionAccuracy(x=ev_boot_pred1_u,data=getData(ev_boot,"unknown"),byUser=FALSE)
-
+ev_boot_rec1_u <- Recommender(data = getData(ev_boot, "train"), method = "UBCF", parameter = list(method = "pearson"))
+ev_boot_pred1_u <- predict(object = ev_boot_rec1_u, newdata = getData(ev_boot, "known"), n = 5, type = "ratings")
+UBCF_boot_pearson <- calcPredictionAccuracy(x = ev_boot_pred1_u, data = getData(ev_boot, "unknown"), byUser = FALSE)
 #k-fold
 #Cosine
-ev_fold_rec_u<-Recommender(data=getData(ev_fold,"train"), method="UBCF", parameter=list(method="cosine"))
-ev_fold_pred_u<-predict(object=ev_fold_rec_u,newdata=getData(ev_fold,"known"),n=5, type="ratings")
-UBCF_fold_cosine<-calcPredictionAccuracy(x=ev_fold_pred_u,data=getData(ev_fold,"unknown"),byUser=FALSE)
+ev_fold_rec_u <- Recommender(data = getData(ev_fold, "train"), method = "UBCF", parameter = list(method = "cosine"))
+ev_fold_pred_u <- predict(object = ev_fold_rec_u, newdata = getData(ev_fold, "known"), n = 5, type = "ratings")
+UBCF_fold_cosine <- calcPredictionAccuracy(x = ev_fold_pred_u, data = getData(ev_fold, "unknown"), byUser = FALSE)
 #Pearson
-ev_fold_rec1_u<-Recommender(data=getData(ev_fold,"train"), method="UBCF", parameter=list(method="pearson"))
-ev_fold_pred1_u<-predict(object=ev_fold_rec1_u,newdata=getData(ev_fold,"known"),n=5, type="ratings")
-UBCF_fold_pearson<-calcPredictionAccuracy(x=ev_fold_pred1_u,data=getData(ev_fold,"unknown"),byUser=FALSE)
-
+ev_fold_rec1_u <- Recommender(data = getData(ev_fold, "train"), method = "UBCF", parameter = list(method = "pearson"))
+ev_fold_pred1_u <- predict(object = ev_fold_rec1_u, newdata = getData(ev_fold, "known"), n = 5, type = "ratings")
+UBCF_fold_pearson <- calcPredictionAccuracy(x = ev_fold_pred1_u, data = getData(ev_fold, "unknown"), byUser = FALSE)
 #results
-eval_accuracy_cosine_u<-rbind(UBCF_split_cosine,UBCF_boot_cosine,UBCF_fold_cosine)
-eval_accuracy_pearson_u<-rbind(UBCF_split_pearson,UBCF_boot_pearson,UBCF_fold_pearson)
+eval_accuracy_cosine_u <- rbind(UBCF_split_cosine, UBCF_boot_cosine, UBCF_fold_cosine)
+eval_accuracy_pearson_u <- rbind(UBCF_split_pearson, UBCF_boot_pearson, UBCF_fold_pearson)
+```  
+  
+# Conclusion  
 
-
-```
-
-
-
-# Conclusion
-
-Table below shows accuracy measures on the ICBF algorithm.
-
+The table below shows accuracy measures for the ICBF algorithm.  
+  
 ```{r}
 eval_accuracy_cosine
 eval_accuracy_pearson
 ```
 
 Results     
-- Similarities:   
-Pearson method yields lower errors than using Cosine.
-
-- Train/Test split method:
-Using Cosine similarity measure, bootstrapping splitting method yields lower errors.     
-Using Pearson similarity measure, bootstrapping method yields lower errors.
-
-- In general,the bootstrapping-pearson combination is the recommender with lowest prediction error.
-
-Table below shows accuracy measures on the UCBF algorithm.
-
+* Similarities:   
+The Pearson method yielded lower errors than using Cosine.
+  
+* Train/Test split method:
+Using Cosine similarity measure and bootstrapping splitting method yielded lower errors.     
+Using Pearson similarity measure and bootstrapping splitting method yielded lower errors.
+  
+* In general, the bootstrapping-pearson combination is the best recommender with the lowest prediction error.  
+  
+The table below shows accuracy measures on the UCBF algorithm.  
+  
 ```{r}
 eval_accuracy_cosine_u
 eval_accuracy_pearson_u
-```
-
+```  
+  
 Results     
-- Similarities:   
-Cosine method yields lower errors than using pearson
+* Similarities:   
+The cosine method yielded lower errors than using pearson.
+  
+* Train/Test split method:
+Using Cosine similarity measure and the k-fold method yielded lower errors.     
+Using Pearson similarity measure and the k-fold method yielded lower errors.
+  
+* In general,the k-fold-pearson combination is the recommender with the lowest prediction error.
+  
+Comparing the results of UBCF with IBCF, UBCF accuracy is higher than IBCF. On ICBF, the bootstrapping-pearson combination is the most accurate while on UCBF the k-fold-pearson combinate yielded the lowest errors.
 
-- Train/Test split method:
-Using Cosine similarity measure, k-fold method yields lower errors.     
-Using Pearson similarity measure, k-fold method yields lower errors.
 
-- In general,the k-fold-pearson combination is the recommender with lowest prediction error.
-
-Comparing the results of UBCF with IBCF, UBCF accuracy is higher than IBCF. On ICBF, the bootstrapping-pearson combination is the most accurate while on UCBF the k-fold-pearson combinate yields lower errors.
