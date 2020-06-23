@@ -1,0 +1,388 @@
+---
+title: "DATA 612 - Summer 2020 - Project 3 | Matrix Factorization Methods"
+author: "Bruno de Melo and Leland Randles"
+date: "June 25, 2020"
+output: 
+  html_document:
+    toc: true # table of content true
+    toc_float: true
+    toc_depth: 3  # up to three depths of headings (specified by #, ## and ###)
+    number_sections: true  #if you want number sections at each table header
+    theme: united  # many options for theme, this one is my favorite
+    highlight: tango  # specifies the syntax highlighting style
+    #css: my.css   # you can add your custom css, should be in same folder
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+if(!require(tidyverse)) install.packages("tidyverse",repos = "http://cran.us.r-project.org")
+if(!require(recommenderlab)) install.packages("recommenderlab",repos = "http://cran.us.r-project.org")
+if(!require(knitr)) install.packages("tidyverse",repos = "http://cran.us.r-project.org")
+if(!require(kableExtra)) install.packages("recommenderlab",repos = "http://cran.us.r-project.org")
+if(!require(ggplot2)) install.packages("recommenderlab",repos = "http://cran.us.r-project.org")
+if(!require(irlba)) install.packages("irlba",repos = "http://cran.us.r-project.org")
+
+library("tidyverse")
+library("recommenderlab")
+library("knitr")
+library("kableExtra")
+library("ggplot2")
+library("irlba")
+```
+
+# Introduction - SVD Explained
+<a href="#top"> Back To Top </a>  
+  
+In our previous assignment, we studied collaborative filtering and content filtering. Both have their shortcomings. Collaborative filtering focuses on recommending items based on the similarity of items and/or the similarity of users, but suffers from the _cold start_ problem and an inability to consider side features. Content filtering is a challenge because a profile must be built for each item containing multiple characteristics.  
+  
+In addition, users often associate items in a way which is not easily defined by the characteristics of items. Two movies, for example, might be liked by the same individuals while not having the same genre, actors, box office success, etc. For example, many users might associate two movies because they were both "true to life". We could call these associations "concepts". They are also referred to as latent dimensions or factors.
+
+SVD allows us to take a matrix and decompose it in a way which may allow us to identify such concepts, which can then be used to drive recommendations. It is **always** possible to decompose a real matrix $A$ into three matrices: $U$ (left singular vectors), $\Sigma$ (singular values), and $V$ (right singular values). In terms of a user-item matrix, we can think of $U$ as the "user-to-concept" similarity matrix, the diagonal values of $\Sigma$ as the "strength" of the concepts, and $V$ as the "item-to-concept" similarity matrix:  
+  
+$$A = U \Sigma V^T$$  
+  
+## Illustrative "A" Matrix
+<a href="#top"> Back To Top </a>  
+
+Below we have a matrix of users (viewers),TV shows and ratings: A zero value means the viewer has not rated the show:    
+  
+```{r a_matrix}
+# Create "A"" Matrix
+A <- matrix(c(5, 4, 1, 3, 2, 3, 
+              2, 3, 4, 0, 3, 3, 
+              3, 0, 5, 0, 4, 5, 
+              0, 0, 3, 0, 4, 3, 
+              4, 4, 0, 4, 1, 2, 
+              0, 4, 3, 3, 3, 3, 
+              5, 3, 4, 4, 0, 0, 
+              2, 5, 3, 5, 0, 0), nrow = 8, byrow = TRUE)
+# Add column and row names
+colnames(A) <- c("Westworld","GameOfThrones","BigLittleLies","TheJinx","VicePrincipals","Insecure")
+rownames(A) <- c("Viewer1","Viewer2","Viewer3","Viewer4","Viewer5","Viewer6","Viewer7","Viewer8")
+kable(A) %>% kable_styling()
+```  
+<br>
+
+## Decomposition into $U$, $\Sigma$, and $V$
+<a href="#top"> Back To Top </a>  
+  
+Below, the matrix is decomposed into three matrices: $U$ (left singular vectors), $\Sigma$ (singular values), and $V$ (right singular values). In terms of a user-item matrix, we can think of $U$ as the "user-to-concept" similarity matrix, the diagonal values of $\Sigma$ as the "strength" of the concepts, and $V$ as the "item-to-concept" similarity matrix:  
+
+```{r decomp}
+x <- svd(A)
+U <- x$u
+sig <- x$d
+V <- x$v
+```  
+  
+The $U$ matrix is a "viewer-to-concept" similarity matrix:  
+
+```{r u}
+kable(U) %>% kable_styling()
+```
+  
+The diagonal values of $\Sigma$ (as a matrix) provide the "strength" of the concepts:  
+  
+```{r sig}
+kable(diag(sig)) %>% kable_styling()
+```
+  
+And the $V$ matrix is the "TV show-to-concept" similarity matrix:  
+  
+```{r v}
+kable(V) %>% kable_styling()
+```  
+  
+One challenge is interpreting the concepts. What do they represent? In this case, we have six TV shows which arguably can be put into four genres ("Westworld" and "Game of Thromes" into "scifi/fantasy", "Big Little Lies" into "drama", "The Jinx" into "documentary", and "Vice Principals" and "Insecure" into "comedy"). Perhaps some of the shows share directors, cast members, etc. The $\Sigma$ matrix shows six singular values, yet 90% of the energy (relative strength of the singular value) is encompassed in the first two singular values. We will find that we can drop the other four singular values to create smaller matrices (dimensionality reduction) and use those to make predictions. But what do the two selected concepts represent?  
+
+Ultimately, it doesn't matter. SVD brings out the latent dimensions/factors and uses them to recommend shows. Knowing exactly what the latent dimensions/factors are is secondary to the power of SVD.
+
+We can demonstrate this more clearly by using SVD on a real dataset and using dimensionality reduction to make predictions.    
+  
+<br>
+
+# Using SVD to a Make Recommendations
+<a href="#top"> Back To Top </a>  
+  
+Our data set for this section is the `MovieLense` dataset from the `recommenderlab` R package, subsetted in the exact manner it is subsetted on pg. 78 of the textbook (see References; code reproduced below):  
+  
+```{r ml_subset}
+# naming it 'rm' instead of 'ratings_movies'
+data("MovieLense")
+rm <- MovieLense[rowCounts(MovieLense) > 50, colCounts(MovieLense) > 100]
+rm
+```  
+<br>  
+  
+## Create "A" Matrix
+  
+Per the output above, `rm` is a `realRatingMatrix` consisting of 560 users and 332 movies. The next step is to convert it to a matrix and decompose the matrix via SVD.  
+
+```{r svd_rm}
+# convert rm to matrix
+rm_mx <- as(rm, "matrix")
+# percentage of data points in matrix which are NA
+sum(is.na(rm_mx)) / (560 * 332)
+
+#added by BM
+# using this transformation, NAs are converted to 0
+rm_mx_b <- as.matrix(rm@data)
+sum(is.na(rm_mx_b)) / (560 * 332)
+
+```  
+<br>
+  
+## Address Missing Values  
+  
+A common challenge for any recommender framework is the fact that most items are not rated. As we can see above, in this case, 70.26% of the user/movie combinations have no rating. SVD requires that there be no missing values in the matrix. We will attempt to address this in two ways:  
+
+a. Convert missing values to 0
+b. Convert missing values to the row mean for each row
+  
+```{r mvs}
+# copy matrix to A_0 and then replace NA values with zero 
+A_0 <- rm_mx
+A_0[is.na(A_0)] <- 0
+# copy matrix to A_rowavg and then replace NA values with row means
+A_rowavg <- rm_mx
+row_avg_vector <- apply(rm_mx, 1, mean, na.rm = TRUE) # row means
+for(i in 1:560) {A_rowavg[i,is.na(A_rowavg[i,])] <- row_avg_vector[i]}
+
+# added by bruno
+#  dataset with 0s
+A_0_b<-rm_mx_b
+
+#  using raw average (dataset with 0s)
+A_raw_b<-rm_mx_b
+raw_avg<-mean(A_raw_b)
+A_raw_b[(A_raw_b == 0)] <-raw_avg
+
+#  using row means (dataset with 0s)
+A_rowavg_b<-rm_mx_b
+aa<-rowMeans(A_rowavg_b)
+for(i in 1:560) {A_rowavg_b[i,(A_rowavg_b[i,] == 0)] <- aa[i]}
+
+#  using normalization
+A_norm<-normalize(rm)
+A_norm<-as.matrix(A_norm@data)
+```
+
+## Dimensionality Reduction on Both Datasets  
+  
+Now that we have created two different matrices which handled missing values differently, we are ready to decompose the matrices:  
+  
+```{r decompose}
+# SVD for dataset that used zeroes for missing values
+x_0 <- svd(A_0)
+U_0 <- x_0$u
+sig_0 <- x_0$d
+V_0 <- x_0$v
+# SVD for dataset that used row means for missing values
+x_rowavg <- svd(A_rowavg)
+U_rowavg <- x_rowavg$u
+sig_rowavg <- x_rowavg$d
+V_rowavg <- x_rowavg$v
+
+
+# added by bruno
+# SVD for dataset that used zeroes for missing values
+x_0_b <- svd(A_0_b)
+U_0_b <- x_0_b$u
+sig_0_b <- x_0_b$d
+V_0_b <- x_0_b$v
+# SVD for dataset that used raw mean for missing values
+x_raw_b <- svd(A_raw_b)
+U_raw_b <- x_raw_b$u
+sig_raw_b <- x_raw_b$d
+V_rawavg_b <- x_raw_b$v
+# SVD for dataset that used row means for missing values
+x_rowavg_b <- svd(A_rowavg_b) 
+U_rowavg_b <- x_rowavg_b$u
+sig_rowavg_b <- x_rowavg_b$d
+V_rowavg_b <- x_rowavg_b$v
+# SVD for normalized dataset
+x_norm_b <- svd(A_norm)
+U_norm_b<- x_norm_b$u
+sig_norm_b <- x_norm_b$d
+V_norm_b <- x_norm_b$v
+
+
+```  
+  
+Now we can reduce the dimensionality. We do this by keeping **some**, but not all, of the singular values, and then setting the rest of the singular values to zero in the $\Sigma$ matrix and using it to create a new $U$ and $V$ matrix. The decision on which singular values to include is driven by the amount of "energy" they contribute. Energy is defined as the singular value squared. Fortunately, SVD creates a $\Sigma$ matrix composed of diagonal values which are the singular values sorted from highest to lowest. If we decide we want to keep 80% of the energy, for example, then we need to keep the ones which when squared, add up to about 80% of the sum of all singular values squared. The R function `svd` provides all of the singular values in a vector. We can determine which sum up to 80% of the energy, then recreate our $\Sigma$ matrix:  
+
+```{r new_mx}
+# identifying how many singular values are needed to retain just over 80% of the energy
+svs <- length(cumsum((sig_0^2)/sum(sig_0^2))[cumsum((sig_0^2)/sum(sig_0^2)) <= 0.80]) + 1
+svs
+# create new sigma matrix replacing remaining singular values with zero
+svs_new <- c(sig_0[1:svs], rep(0, length(sig_0) - svs))
+new_sig_0 <- diag(svs_new)
+
+
+# added by BM
+
+# Energy threshold calculation for dataset that used zeroes for missing values
+d_sq_0<-sum(sig_0_b^2) 
+nrg_0<-cumsum(sig_0_b^2)/d_sq_0
+plot(nrg_0, pch=21, col = "red", cex = 0.5, xlab='Singular Value', ylab='Singular Values Energy') 
+lines(x=c(0,332),y=c(.8,.8)) 
+k_0<-length(nrg_0[nrg_0<=.8])+1
+
+x_0_new <- irlba(A_0_b,nv=k_0)
+U_0_new <- x_0_new$u
+sig_0_new <- x_0_new$d
+V_0_new <- x_0_new$v
+
+# Energy threshold calculation for for dataset that used raw mean for missing values
+d_sq_raw<-sum(sig_raw_b^2) 
+nrg_raw<-cumsum(sig_raw_b^2)/d_sq_raw
+plot(nrg_raw, pch=21, col = "red", cex = 0.5, xlab='Singular Value', ylab='Singular Values Energy') 
+lines(x=c(0,332),y=c(.8,.8)) 
+k_raw<-length(nrg_raw[nrg_raw<=.8])+1
+
+x_raw_new <- irlba(A_raw_b,nv=k_raw)
+U_raw_new <- x_raw_new$u
+sig_raw_new <- x_raw_new$d
+V_raw_new <- x_raw_new$v
+
+# Energy threshold calculation for for dataset that used row means for missing values
+d_sq_row<-sum(sig_rowavg_b^2) 
+nrg_row<-cumsum(sig_rowavg_b^2)/d_sq_row
+plot(nrg_row, pch=21, col = "red", cex = 0.5, xlab='Singular Value', ylab='Singular Values Energy') 
+lines(x=c(0,332),y=c(.8,.8)) 
+k_row<-length(nrg_row[nrg_row<=.8])+1
+
+x_row_new <- irlba(A_rowavg_b,nv=k_row)
+U_row_new <- x_row_new$u
+sig_row_new <- x_row_new$d
+V_row_new <- x_row_new$v
+
+# Energy threshold calculation for normalized dataset
+d_sq_norm<-sum(sig_norm_b^2) 
+nrg_norm<-cumsum(sig_norm_b^2)/d_sq_norm
+plot(nrg_norm, pch=21, col = "red", cex = 0.5, xlab='Singular Value', ylab='Singular Values Energy') 
+lines(x=c(0,332),y=c(.8,.8)) 
+k_norm<-length(nrg_norm[nrg_norm<=.8])+1
+
+x_norm_new <- irlba(A_norm,nv=k_norm)
+U_norm_new <- x_norm_new$u
+sig_norm_new <- x_norm_new$d
+V_norm_new <- x_norm_new$v
+
+k_Method<-c("Using 0s","Using Raw Average","Using Row Averages","Using Normalization")
+k_values<-c(k_0,k_raw,k_row,k_norm)
+
+k_table<-rbind(k_Method,k_values)
+kable(k_table) %>% kable_styling()
+
+```
+
+NOTE TO BRUNO: Below is code I was playing around with for next steps:  
+
+```{r Prediction}
+# use matrix with only 69 singular values to create new matrix (is this really necessary?)
+new_A_0 <- U_0 %*% new_sig_0 %*% t(V_0)
+
+# run svd on it to experiment
+tst <- svd(new_A_0)
+# if you look at tst$u, tst$v, and tst$d, I am not sure they are what we want or have utility?
+
+
+# added by BM
+# predictions
+rm_pred<-as(rm_mx_b,"realRatingMatrix")
+rm_norm<-as(A_norm,"realRatingMatrix")
+# dataset that uses zeroes for missing values
+pred_0<-U_0_new %*% diag(sig_0_new) %*% t(V_0_new)
+pred_0[,][pred_0[,] > 5] <- 5
+pred_0[,][pred_0[,] < 0] <- 0
+colnames(pred_0)<-colnames(rm_mx_b)
+rownames(pred_0)<-rownames(rm_mx_b)
+x=as(pred_0,"realRatingMatrix")
+# error calculation
+svd_0_er<-calcPredictionAccuracy(x=x, data=rm_pred)
+
+# dataset that uses raw mean for missing values
+pred_raw<-U_raw_new %*% diag(sig_raw_new) %*% t(V_raw_new)
+pred_raw[,][pred_raw[,] > 5] <- 5
+pred_raw[,][pred_raw[,] < 0] <- 0
+colnames(pred_raw)<-colnames(rm_mx_b)
+rownames(pred_raw)<-rownames(rm_mx_b)
+y=as(pred_raw,"realRatingMatrix")
+# error calculation
+svd_raw_er<-calcPredictionAccuracy(x=y, data=rm_pred)
+
+# dataset that uses row means for missing values
+pred_row<-U_row_new %*% diag(sig_row_new) %*% t(V_row_new)
+pred_row[,][pred_row[,] > 5] <- 5
+pred_row[,][pred_row[,] < 0] <- 0
+colnames(pred_row)<-colnames(rm_mx_b)
+rownames(pred_row)<-rownames(rm_mx_b)
+z=as(pred_row,"realRatingMatrix")
+# error calculation
+svd_row_er<-calcPredictionAccuracy(x=z, data=rm_pred)
+
+# normalized dataset
+pred_norm<-U_norm_new %*% diag(sig_norm_new) %*% t(V_norm_new)
+colnames(pred_norm)<-colnames(rm_mx_b)
+rownames(pred_norm)<-rownames(rm_mx_b)
+w=as(pred_norm,"realRatingMatrix")
+# error calculation
+svd_norm_er<-calcPredictionAccuracy(x=w, data=rm_norm)
+
+k_Method<-c("Using 0s","Using Raw Average","Using Row Averages","Using Normalization")
+k_values_p<-c(svd_0_er,svd_raw_er,svd_row_er,svd_norm_er)
+
+k_table_p<-data.frame(rbind(svd_0_er,svd_raw_er,svd_row_er,svd_norm_er))
+k_table_p<-k_table_p[order(k_table_p$RMSE ),]
+kable(k_table_p) %>% kable_styling()
+
+```
+  
+
+<br>
+## Comparing SVD with UBCF and IBCF methods  
+
+
+```{r Comparison}
+# split dataset into the training and the test set
+rm_1<-as(rm_mx_b,"realRatingMatrix")
+ev<-evaluationScheme(rm_1,method="split", train=0.8, given=15, goodRating=4)
+
+# UBCF with cosine distance
+ubcf_rec <- Recommender(getData(ev, "train"), "UBCF", param=list(normalize = "center",method="cosine"))
+# IBCF with cosine distance
+ibcf_rec <- Recommender(getData(ev, "train"), "IBCF", param=list(normalize = "center",method="cosine"))
+#SVD_realRatingMatrix - column mean imputation
+svd_rec<-Recommender(getData(ev, "train"), "SVD")
+
+#prediction
+ubcf_pred<-predict(ubcf_rec,getData(ev,"know"),type="ratings")
+ibcf_pred<-predict(ibcf_rec,getData(ev,"know"),type="ratings")
+svd_pred<-predict(svd_rec,getData(ev,"know"),type="ratings")
+
+#accuracy
+ubcf_er<-calcPredictionAccuracy(ubcf_pred,getData(ev,"unknown"))
+ibcf_er<-calcPredictionAccuracy(ibcf_pred,getData(ev,"unknown"))
+svd_er<-calcPredictionAccuracy(svd_pred,getData(ev,"unknown"))
+
+k_table_er<-data.frame(rbind(ubcf_er,ibcf_er,svd_er))
+k_table_er<-k_table_er[order(k_table_er$RMSE ),]
+
+error_table<-data.frame(rbind(k_table_er, k_table_p))
+error_table<-error_table[order(error_table$RMSE ),]
+kable(error_table) %>% kable_styling()
+```
+
+
+
+
+<br>
+## References
+<a href="#top"> Back To Top </a>
+
+* [Building a Recommendation System with R by Suresh K. Gorakala, Michele Usuelli](https://www.amazon.com/dp/B012O8S1YM/ref=dp-kindle-redirect?_encoding=UTF8&btkr=1)
+
+<a href="#top"> Back To Top </a>  
