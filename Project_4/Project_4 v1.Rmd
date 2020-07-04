@@ -1,0 +1,306 @@
+---
+title: "DATA 612 - Summer 2020 - Project 4 | Accuracy and Beyond"
+author: "Bruno de Melo and Leland Randles"
+date: "July 2, 2020"
+output: 
+  html_document:
+    toc: true # table of content true
+    toc_float: true
+    toc_depth: 3  # up to three depths of headings (specified by #, ## and ###)
+    number_sections: true  #if you want number sections at each table header
+    theme: united  # many options for theme, this one is my favorite
+    highlight: tango  # specifies the syntax highlighting style
+    #css: my.css   # you can add your custom css, should be in same folder
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+if(!require(tidyverse)) install.packages("tidyverse",repos = "http://cran.us.r-project.org")
+if(!require(recommenderlab)) install.packages("recommenderlab",repos = "http://cran.us.r-project.org")
+if(!require(knitr)) install.packages("tidyverse",repos = "http://cran.us.r-project.org")
+if(!require(kableExtra)) install.packages("recommenderlab",repos = "http://cran.us.r-project.org")
+if(!require(ggplot2)) install.packages("recommenderlab",repos = "http://cran.us.r-project.org")
+if(!require(DescTools)) install.packages("DescTools",repos = "http://cran.us.r-project.org")
+if(!require(caTools)) install.packages("caTools",repos = "http://cran.us.r-project.org")
+
+
+caTools
+library("tidyverse")
+library("recommenderlab")
+library("knitr")
+library("kableExtra")
+library("ggplot2")
+library("DescTools")
+library("caTools")
+```
+
+# Accuracy Comparisons (Deliverable 1)
+<a href="#top"> Back To Top </a>  
+  
+In our previous assignment, we studied Matrix Factorization Methods. In this assignment, we will practice accuracy comparison methods and implement a user experience goal such as increased serendipity, novelty or diversity.  
+  
+For this assignment, we chose to use the Serendipity datasets here: https://grouplens.org/datasets/serendipity-2018/. We follow the procedures laid out in: Kotkov, Denis & Konstan, Joseph & Zhao, Qian & Veijalainen, Jari. (2018). Investigating serendipity in recommender systems based on real user feedback. 1341-1350. 10.1145/3167132.3167276. https://www.researchgate.net/publication/326164444_Investigating_serendipity_in_recommender_systems_based_on_real_user_feedback
+
+These datasets include 10,000,000 movie ratings. However, to make the dataset size more manageable, the ratings were reduced to include only ratings from the users who were part of the serendipity study (the "answers.csv" file). The `ratings_raw` dataset below ultimately contains 1,446,109 ratings.  
+
+Another change we make to the original dataset is to include only six out of eight variations of serendipity, as outlined in the paper. The two remaining variations are likely to reduce user satisfaction.
+
+  
+```{r load_data}
+set.seed(137)
+# load abbreviated datasets
+# dataset of movies
+movies_raw <- read_csv("https://raw.githubusercontent.com/Randles-CUNY/DATA612/master/Proj_4/files_to_use/movies_subset.csv") %>% data.frame()
+# dataset containings recommendations from the recommender system created by authors
+recommendations_raw <- read_csv("https://raw.githubusercontent.com/Randles-CUNY/DATA612/master/Proj_4/files_to_use/recommendations.csv") %>% data.frame()
+# dataset of ratings
+training_raw <- read_csv("https://raw.githubusercontent.com/bsvmelo/Data612-Summer-2020/master/Project_4/training_subset.csv") %>% data.frame()
+# serendipidy dataset (which also contains ratings)
+answers_raw <- read_csv("https://raw.githubusercontent.com/Randles-CUNY/DATA612/master/Proj_4/files_to_use/answers.csv") %>% data.frame()
+
+# subsetting of the Serendipity dataset as per procedure laid out in the paper cited above
+s_df<-subset(answers_raw, (answers_raw$s_ser_rel == FALSE))
+s_df<-subset(s_df, s_df$m_ser_rel == FALSE)
+s<-s_df[,1:3]
+s$rating<-round(s$rating)
+# coercing into realRatingMatrix
+ser <- as(s,"realRatingMatrix")
+s_ratings<-(as.vector(ser@data))
+tbl_ratings<-table(s_ratings)
+tbl_ratings
+
+# training dataset
+t<-training_raw[,1:3]
+t$rating<-round(t$rating)
+t<-distinct(t)
+# coercing into realRatingMatrix
+ratings <- as(t,"realRatingMatrix")
+t_ratings<-(as.vector(ratings@data))
+tbl_ratings<-table(t_ratings)
+tbl_ratings
+# Subsetting training set with movies that have been rated more than 100 times
+ratings1<-ratings[,colCounts(ratings)>200]
+t_redux<-as(ratings1,"data.frame")
+colnames(t_redux)<-colnames(t)
+
+```  
+
+
+## Create UBCF and SVD Recommender Models  
+  
+Per the assignment, Deliverable 1 asks us to build two recommender systems with our data. We chose to build a UBCF model and an SVD model.    
+  
+```{r rm}
+# create evaluation scheme
+
+eval_sets <- evaluationScheme(data = ratings1, method = "cross-validation", k = 4, given = 5, goodRating =3  )
+# build UBCF model and SVD model
+ubcf_rec <- Recommender(getData(eval_sets, "train"), "UBCF", param = list(normalize = "center", method = "cosine"))
+#ibcf_rec <- Recommender(getData(eval_sets, "train"), "IBCF", param = list(normalize = "center", method = "cosine"))
+svd_rec <- Recommender(getData(eval_sets, "train"), "SVD", param = list(normalize = "center", k=10))
+
+# Make predictions with each model
+ubcf_pred <- predict(ubcf_rec, getData(eval_sets, "known"), type = "ratings")
+#ibcf_pred <- predict(ibcf_rec, getData(eval_sets, "known"), type = "ratings")
+svd_pred <- predict(svd_rec, getData(eval_sets, "known"), type = "ratings")
+
+```  
+  
+<br>
+  
+## Compare the UBCF and SVD Recommender Models 
+<a href="#top"> Back To Top </a>  
+  
+Now that we have built the two models, we will compare the errors and other metrics for each model:  
+
+```{r err1}
+# Table showing error calcs for UBCF vs SVD
+ubcf_er <- calcPredictionAccuracy(ubcf_pred, getData(eval_sets, "unknown"))
+#ibcf_er <- calcPredictionAccuracy(ibcf_pred, getData(eval_sets, "unknown"))
+svd_er <- calcPredictionAccuracy(svd_pred, getData(eval_sets, "unknown"))
+models_to_evaluate <- list(
+  UBCF_cos = list(name = "UBCF", param = list(normalize = "center", method = "cosine")), 
+#  IBCF_cos = list(name = "IBCF", param = list(normalize = "center", method = "cosine")), 
+  SVD = list(name = "SVD", param = list(normalize = "center", k=10))
+)
+n_recommendations <- c(1, 5, seq(10, 100, 10))
+list_results <- evaluate(x = eval_sets, method = models_to_evaluate, n = n_recommendations, progress=FALSE)
+avg_matrices <- lapply(list_results, avg)
+error_tables <- rbind(cbind(Model = rep("UBCF",12), n = rownames(avg_matrices$UBCF_cos), avg_matrices$UBCF_cos), cbind(Model = rep("SVD",12), n = rownames(avg_matrices$UBCF_cos), avg_matrices$SVD))
+#error_tables <- rbind(cbind(Model = rep("UBCF",12), n = rownames(avg_matrices$UBCF_cos), avg_matrices$UBCF_cos),cbind(Model = rep("IBCF",12), n = rownames(avg_matrices$IBCF_cos), avg_matrices$IBCF), cbind(Model = rep("SVD",12), n = rownames(avg_matrices$UBCF_cos), avg_matrices$SVD))
+error_tables[,3:10] <- round(as.numeric(error_tables[,3:10]), 6)
+kable(error_tables) %>% kable_styling()
+```  
+  
+We can see that the UBCF model is the more accurate of the two Next, we look at the RMSE, MSE and MAE. SVD is the better model, producing the lowest errors.  
+  
+```{r err2}
+k_Method <- c("UBCF-Cosine", "SVD")
+k_table_p <- data.frame(rbind(ubcf_er, svd_er))
+#k_Method <- c("UBCF-Cosine","IBCF_Cosine", "SVD")
+#k_table_p <- data.frame(rbind(ubcf_er,ibcf_er, svd_er))
+rownames(k_table_p) <- k_Method
+k_table_p <- k_table_p[order(k_table_p$RMSE ),]
+kable(k_table_p) %>% kable_styling()
+```   
+  
+We also created ROC Curve and Precision-Recall Plots:  
+  
+```{r plots}
+# ROC Curve plot
+plot(list_results, annotate = 1, legend = "topleft")
+title("ROC Curve")
+# Precision-Recall plot
+plot(list_results, "prec/rec", annotate = 1, legend = "bottomright")
+title("Precision-Recall")
+```
+
+A good performance index is the area under the curve (AUC), i.e. the area under the ROC curves. Curve above seems to favor the UBCF model but let's calculate the AUC proper. AUC is calculated as the area formed by the TPR and FPR coordinates. To calculate the area, we will do the following procedure:
+1) Normalize data, so that X and Y axis should be in unity.
+2) Use Trapezoidal method to calculate AUC. 
+
+```{r}
+#AUC calculation
+#UBCF
+x<-as.vector(avg_matrices$UBCF_cos[,8])
+y<-as.vector(avg_matrices$UBCF_cos[,7])
+#normalization
+norm_x<-(x-min(x))/(max(x)-min(x))
+norm_y<-(y-min(y))/(max(y)-min(y))
+#AUC calculation using Trapezoid Rule Numerical Integration
+auc_ubcf<-trapz(norm_x,norm_y)
+#SVD
+z<-as.vector(avg_matrices$SVD[,8])
+w<-as.vector(avg_matrices$SVD[,7])
+#normalization
+norm_z<-(z-min(z))/(max(z)-min(z))
+norm_w<-(w-min(w))/(max(w)-min(w))
+#AUC calculation using Trapezoid Rule Numerical Integration
+auc_svd<-trapz(norm_z,norm_w)
+
+k_Method <- c("UBCF-Cosine", "SVD")
+k_table_p <- data.frame(rbind(cbind(AUC=c(auc_ubcf,auc_svd))))
+rownames(k_table_p) <- k_Method
+kable(k_table_p) %>% kable_styling()
+
+
+```
+
+As seen above, SVD AUC is slightly higher than UBCF's.
+
+<br>
+
+# Increase in serendipity (Deliverable 2)
+
+We use the Serendipity dataset, which seems to be the only publicly available dataset, which contains user feedback regarding serendipity on movies.
+
+Our methodology is to include ramdonly sampled movies that contain some level of seredenpity into the training dataset, and then measure this inclusion impact. To avoid increasing the size of the training dataset, we will reduce its size accordingly before inclusion of the serendipity ratings. 
+
+We will measure the inclusion impact varying the number of seredenpity movies into the training set. This to be done through a for loop from 10 to 100%.
+
+
+```{r}
+
+
+#loop
+vec_s<-seq(10,100,10)
+vec_size<-seq(1,10,1)
+t_size<-length(t_redux$user)
+#using lapply functions to generate all results
+# sampling serendipity file
+s_sample<-lapply(vec_s,function(n){sample_frac(s,n/100)} )
+names(s_sample)<-paste0("s_sample", vec_s)
+# sample size
+s_sample_size<-lapply(vec_size,function(n){length(s_sample[[n]][,1])})
+# reducing size of original set through sampling
+sample_red<-lapply(vec_size,function(n){1-s_sample_size[[n]]/t_size})
+t_sample<-lapply(vec_size,function(n){sample_frac(t_redux,sample_red[[n]])})
+t_sample<-t_redux
+#merging data frames
+#t_s<-lapply(vec_size,function(n){rbind.data.frame(s_sample[[n]],t_sample[[n]])}) 
+t_s<-lapply(vec_size,function(n){rbind.data.frame(s_sample[[n]],t_sample)}) 
+
+# coercing into realRatingMatrix
+ratings_s<-lapply(vec_size,function(n){as(t_s[[n]],"realRatingMatrix")}) 
+# create evaluation scheme
+eval_sets_s<-lapply(vec_size,function(n){evaluationScheme(data = ratings_s[[n]], method = "cross-validation", k = 4, given = 5, goodRating =3)})
+# build UBCF model and SVD model
+ubcf_rec_s<-lapply(vec_size,function(n){Recommender(getData(eval_sets_s[[n]], "train"), "UBCF", param = list(normalize = "center", method = "cosine"))})
+svd_rec_s<-lapply(vec_size,function(n){Recommender(getData(eval_sets_s[[n]], "train"), "SVD", param = list(normalize = "center", k=10))})
+# Make predictions with each model
+ubcf_pred_s <-lapply(vec_size,function(n){predict(ubcf_rec_s[[n]], getData(eval_sets_s[[n]], "known"), type = "ratings")})
+svd_pred_s <-lapply(vec_size,function(n){predict(svd_rec_s[[n]], getData(eval_sets_s[[n]], "known"), type = "ratings")})
+# Table showing error calcs for UBCF vs SVD
+ubcf_er_s <-lapply(vec_size,function(n){calcPredictionAccuracy(ubcf_pred_s[[n]], getData(eval_sets_s[[n]], "unknown"))})
+svd_er_s <-lapply(vec_size,function(n){calcPredictionAccuracy(svd_pred_s[[n]], getData(eval_sets_s[[n]], "unknown"))})
+# Model evaluation
+models_to_evaluate <- list(
+    UBCF_cos = list(name = "UBCF", param = list(normalize = "center", method = "cosine")), 
+  #  IBCF_cos = list(name = "IBCF", param = list(normalize = "center", method = "cosine")), 
+    SVD = list(name = "SVD", param = list(normalize = "center", k=10))
+  )
+  
+n_recommendations <- c(1, 5, seq(10, 100, 10))
+list_results_s <-lapply(vec_size,function(n){evaluate(x = eval_sets_s[[n]], method = models_to_evaluate, n = n_recommendations, progress=FALSE)})
+avg_matrices_s <-lapply(vec_size,function(n){lapply(list_results_s[[n]], avg)})
+# error tables TP
+error_tables_s <- lapply(vec_size,function(n){rbind(cbind(Model = rep("UBCF",12), n = rownames(avg_matrices_s[[n]]$UBCF_cos), avg_matrices_s[[n]]$UBCF_cos), cbind(Model = rep("SVD",12), n = rownames(avg_matrices_s[[n]]$UBCF_cos), avg_matrices_s[[n]]$SVD))})
+#error_tables_s[[1:10]][,3:10] <-lapply(vec_size,function(n){round(as.numeric(error_tables_s[[n]][,3:10]), 6)})
+#error_tables_s[,3:10] <- round(as.numeric(error_tables_s[,3:10]), 6)
+#kable(error_tables_s) %>% kable_styling()
+#kable(error_tables_s)[[1]]
+error_tables_s[[1]]
+
+# error tables RMSE
+k_Method <- c("UBCF-Cosine","SVD")
+k_table_s <- data.frame(rbind(ubcf_er_s, svd_er_s))
+rownames(k_table_s) <- k_Method
+#k_table_s <- k_table_s[order(k_table_s$RMSE ),]
+kable(k_table_s) %>% kable_styling()
+
+# ROC Curve plot
+c<-lapply(vec_size,function(n){plot(list_results_s[[n]], annotate = 1, legend = "topleft")})
+title("ROC Curve")
+# Precision-Recall plot
+d<-lapply(vec_size,function(n){plot(list_results_s[[n]], "prec/rec", annotate = 1, legend = "bottomright")})
+title("Precision-Recall")
+
+#AUC calculation
+#UBCF
+x_s<-lapply(vec_size,function(n){as.vector(avg_matrices_s[[n]]$UBCF_cos[,8])})
+y_s<-lapply(vec_size,function(n){as.vector(avg_matrices_s[[n]]$UBCF_cos[,7])})
+#normalization
+norm_x_s<-lapply(vec_size,function(n){(x_s[[n]]-min(x_s[[n]]))/(max(x_s[[n]])-min(x_s[[n]]))})
+norm_y_s<-lapply(vec_size,function(n){(y_s[[n]]-min(y_s[[n]]))/(max(y_s[[n]])-min(y_s[[n]]))})
+#AUC calculation using Trapezoid Rule Numerical Integration
+auc_ubcf_s<-lapply(vec_size,function(n){trapz(norm_x_s[[n]],norm_y_s[[n]])})
+#SVD
+z_s<-lapply(vec_size,function(n){as.vector(avg_matrices_s[[n]]$SVD[,8])})
+w_s<-lapply(vec_size,function(n){as.vector(avg_matrices_s[[n]]$SVD[,7])})
+#normalization
+norm_z_s<-lapply(vec_size,function(n){(z_s[[n]]-min(z_s[[n]]))/(max(z_s[[n]])-min(z_s[[n]]))})
+norm_w_s<-lapply(vec_size,function(n){(w_s[[n]]-min(w_s[[n]]))/(max(w_s[[n]])-min(w_s[[n]]))})
+#AUC calculation using Trapezoid Rule Numerical Integration
+auc_svd_s<-lapply(vec_size,function(n){trapz(norm_z_s[[n]],norm_w_s[[n]])})
+
+#k_Method <-lapply(vec_size,function(n){c("UBCF-Cosine", "SVD")})
+auc_table<- data.frame(rbind(auc_ubcf_s, auc_svd_s))
+rownames(auc_table) <- k_Method
+#k_table_p <-lapply(vec_size,function(n){rownames(k_table_p[[n]]) <- k_Method[[n]][1:2]})
+#k_table_s <-lapply(vec_size,function(n){data.frame(rbind(cbind(AUC=c(auc_ubcf_s[[n]],auc_svd_s[[n]]))))})
+kable(auc_table) %>% kable_styling()
+
+
+
+```  
+
+```{r}
+  
+```
+
+
+# References
+<a href="#top"> Back To Top </a>
+
+* [Building a Recommendation System with R by Suresh K. Gorakala, Michele Usuelli](https://www.amazon.com/dp/B012O8S1YM/ref=dp-kindle-redirect?_encoding=UTF8&btkr=1)
+* [Kotkov D, Konstan J.A, Zhao Q, Veijalainen J (2018) Investigating serendipity in recommender systems based on real user feedback. In: Proceedings of SAC 2018: symposium on applied computing, ACM](https://dl.acm.org/doi/10.1145/3167132.3167276)
