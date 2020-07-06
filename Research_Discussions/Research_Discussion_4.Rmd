@@ -1,0 +1,36 @@
+---
+title: "Research Discussion Assignment 4"
+author: "Bruno de Melo"
+date: "6/19/2020"
+output: html_document
+---
+
+## Research Discussion Assignment 4
+
+Mitigating the Harm of Recommender Systems
+
+Read one or more of the articles below and consider how to counter the radicalizing effects of recommender systems or ways to prevent algorithmic discrimination.
+
+Renee Diresta, Wired.com (2018): Up Next: A Better Recommendation System      
+Zeynep Tufekci, The New York Times (2018): YouTube, the Great Radicalizer       
+Sanjay Krishnan, Jay Patel, Michael J. Franklin, Ken Goldberg (n/a): Social Influence Bias in Recommender Systems: A Methodology for Learning, Analyzing, and Mitigating Bias in Ratings         
+
+**Prioritizing ethics over profit**
+
+Bias, fairness, bubbles and ethics of recommender systems have been exhaustively discussed in the specialized news for quite some time now. The echo chamber effect is well documented and has shown to produce undesirable human behaviour such as radicalization and polarization of ideas, spread of misinformation and other perverse actions.
+
+Big social platforms like Facebook, Twitter and YouTube, often choose the easiest hands-off approach, despite technical advancement that could prevent such bubbles. It is clear now that these platforms will not change their recsys system in the name of ethics and better societal life, as economic incentives are just too big to change course. A clear example is illustrated in the response of Mark Z on the current advertisement boycott Facebook is facing: “they will back soon enough”. He knows about the problems, but he’s unwilling to seriously tackle these issues in the name of “free-speech”.
+
+One way to force these platforms to behave more ethically is through the legal system, in the form of data protection laws or regulations, like the GDPR initiative in Europe. From Wikepedia GDPR is defined as “The General Data Protection Regulation (EU) 2016/679 (GDPR) is a regulation in EU law on data protection and privacy in the European Union (EU) and the European Economic Area (EEA). It also addresses the transfer of personal data outside the EU and EEA areas. The GDPR aims primarily to give control to individuals over their personal data and to simplify the regulatory environment for international business by unifying the regulation within the EU.”
+
+GDPR impact on recsys is so big and important that it was the keynote presentation of the 13th ACM Conference on Recommender Systems held in Copenhagen, Denmark in 2019. Link to the presentation is here: https://recsys.acm.org/wp-content/uploads/2019/09/recsys-19-keynote-1.pdf
+
+**Mireille Hildebrandt** from the Vrije Universiteit Brussels, Belgium showed that the GDPR changes the incentive structure for:    
+1. Those who provide recsys (controllers)    
+2. In turn changing the incentives for developers:          
+    2a. More transparency (about purpose, about consequences)    
+    2b. Taking those whose data are processed seriously    
+    2c. Taking those who are targeted seriously    
+    2d. This will create incentives for better methodology, more integrity, better science
+
+
