@@ -1,0 +1,308 @@
+---
+title: "DATA 612 - Summer 2020 - Project 4 | Accuracy and Beyond"
+author: "Bruno de Melo and Leland Randles"
+date: "July 2, 2020"
+output: 
+  html_document:
+    toc: true # table of content true
+    toc_float: true
+    toc_depth: 3  # up to three depths of headings (specified by #, ## and ###)
+    number_sections: true  #if you want number sections at each table header
+    theme: united  # many options for theme, this one is my favorite
+    highlight: tango  # specifies the syntax highlighting style
+    #css: my.css   # you can add your custom css, should be in same folder
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+if(!require(tidyverse)) install.packages("tidyverse",repos = "http://cran.us.r-project.org")
+if(!require(recommenderlab)) install.packages("recommenderlab",repos = "http://cran.us.r-project.org")
+if(!require(knitr)) install.packages("tidyverse",repos = "http://cran.us.r-project.org")
+if(!require(kableExtra)) install.packages("recommenderlab",repos = "http://cran.us.r-project.org")
+if(!require(ggplot2)) install.packages("recommenderlab",repos = "http://cran.us.r-project.org")
+if(!require(caTools)) install.packages("recommenderlab",repos = "http://cran.us.r-project.org")
+library("tidyverse")
+library("recommenderlab")
+library("knitr")
+library("kableExtra")
+library("ggplot2")
+library("caTools")
+```
+
+# Accuracy Comparisons (Deliverable 1)
+<a href="#top"> Back To Top </a>  
+  
+In our previous assignment, we studied Matrix Factorization Methods. In this assignment, we will practice accuracy comparison methods and implement a user experience goal such as increased serendipity, novelty or diversity.  
+  
+For this assignment, we chose to use the Serendipity datasets here: https://grouplens.org/datasets/serendipity-2018/. We follow the procedures laid out in Kotkov, Denis et. al. (see references section). 
+
+These datasets include 10,000,000 movie ratings. However, to make the dataset size more manageable, the ratings were reduced to include only ratings from the users who were part of the serendipity study (the "answers.csv" file). The `ratings_raw` dataset below contains 1,446,109 ratings. The dataset was further subsetted to include only movies which had been rated at least 200 times.  
+  
+Another change we made to the original dataset is to include only six out of eight variations of serendipity, as outlined in the paper, because the two remaining variations are likely to reduce user satisfaction.  
+  
+```{r load_data, include = FALSE}
+# load abbreviated datasets
+# dataset containings recommendations from the recommender system created by authors
+recommendations_raw <- read_csv("https://raw.githubusercontent.com/Randles-CUNY/DATA612/master/Proj_4/files_to_use/recommendations.csv") %>% data.frame()
+# dataset of ratings
+training_raw <- read_csv("https://raw.githubusercontent.com/bsvmelo/Data612-Summer-2020/master/Project_4/training_subset.csv") %>% data.frame()
+# serendipidy dataset (which also contains ratings)
+answers_raw <- read_csv("https://raw.githubusercontent.com/Randles-CUNY/DATA612/master/Proj_4/files_to_use/answers.csv") %>% data.frame()
+# subsetting of the Serendipity dataset as per procedure laid out in the paper
+s_df <- subset(answers_raw, (answers_raw$s_ser_rel == FALSE))
+s_df <- subset(s_df, s_df$m_ser_rel == FALSE)
+s <- s_df[,1:3]
+# coercing into realRatingMatrix
+ser <- as(s, "realRatingMatrix")
+# training dataset
+t <- training_raw[,1:3]
+t$rating <- round(t$rating)
+t <- distinct(t)
+# coercing into realRatingMatrix
+ratings <- as(t, "realRatingMatrix")
+# Subsetting training set with movies that have been rated more than 200 times
+ratings1 <- ratings[,colCounts(ratings) > 200]
+t_redux <- as(ratings1, "data.frame")
+colnames(t_redux) <- colnames(t)
+```  
+  
+## Create UBCF and SVD Recommender Models  
+<a href="#top"> Back To Top </a>  
+  
+Per the assignment, Deliverable 1 asks us to build two recommender systems with our data. We chose to build a UBCF model and an SVD model.    
+  
+```{r rm}
+set.seed(137)
+# create evaluation scheme
+eval_sets <- evaluationScheme(data = ratings1, method = "cross-validation", k = 4, given = 5, goodRating = 3)
+# build UBCF model and SVD model
+ubcf_rec <- Recommender(getData(eval_sets, "train"), "UBCF", param = list(normalize = "center", method = "cosine"))
+svd_rec <- Recommender(getData(eval_sets, "train"), "SVD", param = list(normalize = "center", k = 10))
+# Make predictions with each model
+ubcf_pred <- predict(ubcf_rec, getData(eval_sets, "known"), type = "ratings")
+svd_pred <- predict(svd_rec, getData(eval_sets, "known"), type = "ratings")
+```  
+  
+<br>
+  
+## Compare the UBCF and SVD Recommender Models 
+<a href="#top"> Back To Top </a>  
+  
+Now that we have built the two models, we will compare the errors and other metrics for each model:  
+
+```{r err1}
+set.seed(137)
+# Table showing error calcs for UBCF vs SVD
+ubcf_er <- calcPredictionAccuracy(ubcf_pred, getData(eval_sets, "unknown"))
+svd_er <- calcPredictionAccuracy(svd_pred, getData(eval_sets, "unknown"))
+models_to_evaluate <- list(
+  UBCF_cos = list(name = "UBCF", param = list(normalize = "center", method = "cosine")), 
+  SVD = list(name = "SVD", param = list(normalize = "center", k=10))
+)
+n_recommendations <- c(1, 5, seq(10, 100, 10))
+list_results <- evaluate(x = eval_sets, method = models_to_evaluate, n = n_recommendations, progress = FALSE)
+avg_matrices <- lapply(list_results, avg)
+error_tables <- rbind(cbind(Model = rep("UBCF",12), n = rownames(avg_matrices$UBCF_cos), avg_matrices$UBCF_cos), cbind(Model = rep("SVD",12), n = rownames(avg_matrices$UBCF_cos), avg_matrices$SVD))
+error_tables[,3:10] <- round(as.numeric(error_tables[,3:10]), 6)
+kable(error_tables) %>% kable_styling()
+```  
+  
+We can see that the UBCF model is the more accurate of the two. Next, we look at the RMSE, MSE and MAE. 
+  
+```{r err2}
+# RMSE, MSE and MAE
+k_Method <- c("UBCF-Cosine", "SVD")
+k_table_p <- data.frame(rbind(ubcf_er, svd_er))
+rownames(k_table_p) <- k_Method
+k_table_p <- k_table_p[order(k_table_p$RMSE ),]
+kable(k_table_p) %>% kable_styling()
+```  
+  
+Using RMSE, MSE and MAE, we can see that SVD is more accurate.    
+  
+In addition, we created ROC Curve and Precision-Recall Plots:  
+  
+```{r plots}
+# ROC Curve plot
+plot(list_results, annotate = 1, legend = "topleft")
+title("ROC Curve")
+# Precision-Recall plot
+plot(list_results, "prec/rec", annotate = 1, legend = "bottomright")
+title("Precision-Recall")
+```
+
+Given that the ROC curves are very similar, we will calculate the area under the curve (AUC) to see which is better (visually, the curve seems to favor the UBCF model). AUC is calculated as the area formed by the TPR and FPR coordinates. To calculate the area, we will do the following procedure:  
+1) Normalize data, so that X and Y axis should be in unity.  
+2) Use Trapezoidal method to calculate AUC.  
+  
+```{r}
+#AUC calculation
+#UBCF
+x <- as.vector(avg_matrices$UBCF_cos[,8])
+y <- as.vector(avg_matrices$UBCF_cos[,7])
+#normalization
+norm_x <- (x-min(x)) / (max(x)-min(x))
+norm_y <- (y-min(y)) / (max(y)-min(y))
+#AUC calculation using Trapezoid Rule Numerical Integration
+auc_ubcf <- trapz(norm_x, norm_y)
+#SVD
+z <- as.vector(avg_matrices$SVD[,8])
+w <- as.vector(avg_matrices$SVD[,7])
+#normalization
+norm_z <- (z-min(z)) / (max(z)-min(z))
+norm_w <- (w-min(w)) / (max(w)-min(w))
+#AUC calculation using Trapezoid Rule Numerical Integration
+auc_svd <- trapz(norm_z, norm_w)
+# Table comparing AUCs
+k_Method <- c("UBCF-Cosine", "SVD")
+k_table_a <- data.frame(rbind(cbind(AUC=c(auc_ubcf, auc_svd))))
+rownames(k_table_a) <- k_Method
+kable(k_table_a) %>% kable_styling() 
+```  
+  
+As seen above, SVD AUC is slightly higher than UBCF's.  
+  
+<br>
+
+# Implement Support for Serendipity (Deliverable 2)  
+<a href="#top"> Back To Top </a>  
+  
+We use the Serendipity dataset, which seems to be the only publicly available dataset, which contains user feedback regarding serendipity on movies.  
+  
+Our methodology is to include ramdonly sampled movies that contain seredenpity-related ratings into the training dataset, and then measure the impact of the inclusion. To avoid increasing the size of the training dataset, we will reduce its size proportionally to the amount of movies included.  
+  
+We will measure the impact of the inclusion by varying the number of seredenpity movies into the training set. This will be done via a for loop from 10 to 100%.  
+  
+```{r}
+set.seed(137)
+#loop
+vec_s <- seq(10,100,10)
+vec_size <- seq(1,10,1)
+t_size <- length(t_redux$user)
+#using lapply functions to generate all results
+# sampling serendipity file
+s_sample <- lapply(vec_s, function(n){sample_frac(s,n/100)})
+names(s_sample) <- paste0("s_sample", vec_s)
+# sample size
+s_sample_size <- lapply(vec_size, function(n){length(s_sample[[n]][,1])})
+# reducing size of original set through sampling
+sample_red <- lapply(vec_size, function(n){1-s_sample_size[[n]] / t_size})
+t_sample <- lapply(vec_size, function(n){sample_frac(t_redux, sample_red[[n]])})
+#t_sample<-t_redux
+#merging data frames
+t_s <- lapply(vec_size, function(n){rbind.data.frame(s_sample[[n]], t_sample[[n]])}) 
+# coercing into realRatingMatrix
+ratings_s <- lapply(vec_size, function(n){as(t_s[[n]], "realRatingMatrix")}) 
+# create evaluation scheme
+eval_sets_s <- lapply(vec_size, function(n){evaluationScheme(data = ratings_s[[n]], method = "cross-validation", k = 4, given = 5, goodRating =3)})
+# build UBCF model and SVD model
+ubcf_rec_s <- lapply(vec_size, function(n){Recommender(getData(eval_sets_s[[n]], "train"), "UBCF", param = list(normalize = "center", method = "cosine"))})
+svd_rec_s <- lapply(vec_size, function(n){Recommender(getData(eval_sets_s[[n]], "train"), "SVD", param = list(normalize = "center", k=10))})
+# Make predictions with each model
+ubcf_pred_s <- lapply(vec_size, function(n){predict(ubcf_rec_s[[n]], getData(eval_sets_s[[n]], "known"), type = "ratings")})
+svd_pred_s <- lapply(vec_size, function(n){predict(svd_rec_s[[n]], getData(eval_sets_s[[n]], "known"), type = "ratings")})
+# Table showing error calcs for UBCF vs SVD
+ubcf_er_s <- lapply(vec_size, function(n){calcPredictionAccuracy(ubcf_pred_s[[n]], getData(eval_sets_s[[n]], "unknown"))})
+svd_er_s <-lapply(vec_size, function(n){calcPredictionAccuracy(svd_pred_s[[n]], getData(eval_sets_s[[n]], "unknown"))})
+# Model evaluation
+models_to_evaluate <- list(
+    UBCF_cos = list(name = "UBCF", param = list(normalize = "center", method = "cosine")), 
+    SVD = list(name = "SVD", param = list(normalize = "center", k=10))
+  )
+n_recommendations <- c(1, 5, seq(10, 100, 10))
+list_results_s <- lapply(vec_size, function(n){evaluate(x = eval_sets_s[[n]], method = models_to_evaluate, n = n_recommendations, progress=FALSE)})
+avg_matrices_s <- lapply(vec_size, function(n){lapply(list_results_s[[n]], avg)})
+# error tables TP/FP/etc
+error_tables_s <- lapply(vec_size, function(n){rbind(cbind(Model = rep("UBCF",12), n = rownames(avg_matrices_s[[n]]$UBCF_cos), avg_matrices_s[[n]]$UBCF_cos), cbind(Model = rep("SVD",12), n = rownames(avg_matrices_s[[n]]$UBCF_cos), avg_matrices_s[[n]]$SVD))})
+# RMSE plot
+#dataframe processing
+rmse_e1 <- do.call(rbind, ubcf_er_s)
+rmse_e2 <- do.call(rbind, svd_er_s)
+rmse_tbl <- data.frame(cbind(rmse_e1, rmse_e2))
+rmse_tbl <- rmse_tbl[,c(1,4)]
+rmse_tbl[,3] <- vec_s
+rmse_tbl <- rmse_tbl[,c(3,1,2)]
+colnames(rmse_tbl) <- c("Perc", "UBCF", "SVD")
+rmse_long <- gather(rmse_tbl, variable, value, -Perc)
+#inclusion of values calculated previously with no serendipity ratings
+rmse_1 <- data.frame("Perc"=vec_s, "UBCF"= ubcf_er[[1]], "SVD"=svd_er[[1]])
+rmse_long1 <- gather(rmse_1, variable, value, -Perc)
+#plot
+ggplot(data = rmse_long, aes(x = Perc, y = value, fill = variable)) +
+  geom_col(position = position_dodge()) + ggtitle("RMSE", subtitle = "Dots represent no serendipity ratings") + xlab("Serendipity inclusion in %") + ylab("RMSE") + geom_point(data = rmse_long1, aes(x = Perc, y = value, fill = variable))
+```  
+  
+# Changes in Accuracy After Incorporating Serendipity Data (Deliverable 3)
+<a href="#top"> Back To Top </a>  
+  
+As can be seen in the chart above, inclusion of the serendipity dataset into the training dataset does reduce the error as measured by RMSE in the majority of the runs. Overall, SVD method is still the one producing the lower errors. Optimal % of inclusion seems to be at 100%.  
+  
+Next we will calculate the AUC using the same methodology as explained above and compare it with the dataset with no serendipity ratings.  
+  
+```{r}
+#AUC calculation
+#UBCF
+x_s <- lapply(vec_size, function(n){as.vector(avg_matrices_s[[n]]$UBCF_cos[,8])})
+y_s <- lapply(vec_size, function(n){as.vector(avg_matrices_s[[n]]$UBCF_cos[,7])})
+#normalization
+norm_x_s <- lapply(vec_size, function(n){(x_s[[n]]-min(x_s[[n]]))/(max(x_s[[n]])-min(x_s[[n]]))})
+norm_y_s <- lapply(vec_size, function(n){(y_s[[n]]-min(y_s[[n]]))/(max(y_s[[n]])-min(y_s[[n]]))})
+#AUC calculation using Trapezoid Rule Numerical Integration
+auc_ubcf_s <- lapply(vec_size, function(n){round(trapz(norm_x_s[[n]],norm_y_s[[n]]),4)})
+#SVD
+z_s <- lapply(vec_size, function(n){as.vector(avg_matrices_s[[n]]$SVD[,8])})
+w_s <- lapply(vec_size, function(n){as.vector(avg_matrices_s[[n]]$SVD[,7])})
+#normalization
+norm_z_s <- lapply(vec_size, function(n){(z_s[[n]]-min(z_s[[n]]))/(max(z_s[[n]])-min(z_s[[n]]))})
+norm_w_s <- lapply(vec_size, function(n){(w_s[[n]]-min(w_s[[n]]))/(max(w_s[[n]])-min(w_s[[n]]))})
+#AUC calculation using Trapezoid Rule Numerical Integration
+auc_svd_s <- lapply(vec_size, function(n){round(trapz(norm_z_s[[n]],norm_w_s[[n]]),4)})
+#AUC plot
+#dataframe processing
+auc_tbl1 <- do.call(rbind, auc_ubcf_s)
+auc_tbl2 <- do.call(rbind, auc_svd_s)
+auc_tbl <- data.frame(cbind(auc_tbl1,auc_tbl2))
+auc_tbl[,3] <- vec_s
+auc_tbl <- auc_tbl[,c(3,1,2)]
+colnames(auc_tbl) <- c("Perc","UBCF","SVD")
+auc_long <- gather(auc_tbl, variable, value, -Perc)
+#inclusion of values calculated previously with no serendipity ratings
+auc_1 <- data.frame("Perc"=vec_s,"UBCF"= auc_ubcf, "SVD"=auc_svd)
+auc_long1 <- gather(auc_1, variable,value, -Perc)
+#plot
+ggplot(data = auc_long, aes(x = Perc, y = value, fill = variable)) +
+  geom_col(position = position_dodge()) + ggtitle("AUC", subtitle = "Dots represent no serendipity ratings ") + xlab("Serendipity inclusion in %") + ylab("AUC") + geom_point(data=auc_long1, aes(x = Perc, y = value, fill = variable))
+```  
+  
+As can be seen in the chart above, inclusion of the serendipity dataset into the training dataset does increase the AUC in all runs. Overall, SVD method produces the higher AUC. Optimal % of inclusion seems to be at 80%.  
+  
+# Additional Experiments and Metrics - Online Evaluation (Deliverable 4)  
+<a href="#top"> Back To Top </a>  
+  
+Online evaluation refers to creating mechanisms that respond to ongoing activity on a web site and then measuring the accuracy of recommendations based off of these mechanisms. For example, a site could experiment with different changes in the recommender system algorithm and assess the accuracy of the change based on Click-Through Rate (CTR). Thus, the determination of how accurate the recommendations are would be based on user interaction with recommended items, how often recommended items were viewed, etc.  
+  
+To create a reasonable online evaluation environment, an engine must be created to split user traffic randomly into different experimental tracks, and then follow user activity from those groups following the experiment. Some potential experiments could include:  
+
+* Altering the presentation of recommendations and seeing if it changes CTR or patterns
+* Altering the recommendation algorithm in a variety of ways:
+  + Incorporate an entropy measure
+  + Give more weight to more recent ratings to address the user-recommender lifecycle
+  + Try recommending baskets of items instead of individual items
+  + Penalize or remove recommendations that could be very wrong, which reduces trust
+* Try arranging recommendations by their cost to see if that changes response
+* Try multi-dimensional ratings (recommend movies with same actor, same genre, etc.)
+  
+# Conclusion  
+<a href="#top"> Back To Top </a>  
+  
+Via the four deliverables we completed per the assignment, we demonstrated that prediction errors can be decreased and recommendation performance improved by utilizing incorporating a serendipity dataset into the recommender system.  
+  
+# References
+<a href="#top"> Back To Top </a>
+
+* [Building a Recommendation System with R by Suresh K. Gorakala, Michele Usuelli](https://www.amazon.com/dp/B012O8S1YM/ref=dp-kindle-redirect?_encoding=UTF8&btkr=1)  
+* [Kotkov D, Konstan J.A, Zhao Q, Veijalainen J (2018) Investigating serendipity in recommender systems based on real user feedback. In: Proceedings of SAC 2018: symposium on applied computing, ACM](https://dl.acm.org/doi/10.1145/3167132.3167276)  
+* [Kotkov, Denis & Konstan, Joseph & Zhao, Qian & Veijalainen, Jari. (2018). Investigating serendipity in recommender systems based on real user feedback. 1341-1350. 10.1145/3167132.3167276.](https://www.researchgate.net/publication/326164444_Investigating_serendipity_in_recommender_systems_based_on_real_user_feedback)  
+* Konstan and Riedl. (2012). Recommender systems: from algorithms to user experience. User Model User-Adap Inter 22:101-123.  
+* Gunawardana and Shani. (2009). A Survey of Accuracy Evaluation Metrics of Recommendation Tasks. Journal of Machine Learning Research 10 2935-2962.  
+* Moreira, Souza and Cunha. (2015). Comparing offline and online recommender system evaluations on long-tail distributions. ACM RecSysy 2015 Poster Proceedings, September 16-20, 2015, Austria, Vienna.  
