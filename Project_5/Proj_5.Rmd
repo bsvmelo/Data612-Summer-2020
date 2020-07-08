@@ -1,0 +1,125 @@
+---
+title: "DATA 612 - Summer 2020 - Project 5 | Implementing a Recommender System on Spark"
+author: "Bruno de Melo and Leland Randles"
+date: "July 9, 2020"
+output: 
+  html_document:
+    toc: true # table of content true
+    toc_float: true
+    toc_depth: 3  # up to three depths of headings (specified by #, ## and ###)
+    number_sections: true  #if you want number sections at each table header
+    theme: united  # many options for theme, this one is my favorite
+    highlight: tango  # specifies the syntax highlighting style
+    #css: my.css   # you can add your custom css, should be in same folder
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+if(!require(tidyverse)) install.packages("tidyverse",repos = "http://cran.us.r-project.org")
+if(!require(recommenderlab)) install.packages("recommenderlab",repos = "http://cran.us.r-project.org")
+if(!require(knitr)) install.packages("tidyverse",repos = "http://cran.us.r-project.org")
+if(!require(kableExtra)) install.packages("recommenderlab",repos = "http://cran.us.r-project.org")
+if(!require(ggplot2)) install.packages("recommenderlab",repos = "http://cran.us.r-project.org")
+if(!require(sparklyr)) install.packages("DescTools",repos = "http://cran.us.r-project.org")
+library("tidyverse")
+library("recommenderlab")
+library("knitr")
+library("kableExtra")
+library("ggplot2")
+library("sparklyr")
+```
+
+# Implementing a Recommender System on Spark
+<a href="#top"> Back To Top </a>  
+  
+In our previous assignment, we experimented with accuracy measures and incorporated serendipity into our recommender system. The dataset we used for that assignment - in its original form - had 10,000,000 ratings. We had scaled it down considerably for the purposes of that assignment. At this size, certain models would not even generate using `recommenderLab` due to local memory constraints.  
+  
+In this assignment, we will attempt to use the full dataset using Spark.  
+  
+```{r load_data}
+# dataset of ratings
+training_raw <- read_csv("https://raw.githubusercontent.com/bsvmelo/Data612-Summer-2020/master/Project_4/training_subset.csv") %>% data.frame()
+
+ratings_raw<- select(training_raw, 1:3)
+```  
+  
+## Move Dataframe to Spark 
+  
+Once the dataframe was created on the local disk, we connected to Spark and copied it to a Spark dataframe:  
+  
+```{r sprkload}
+# install Spark
+spark_install(version = "2.4", hadoop_version = "2.7")
+# create connection to Spark
+sc <- spark_connect(master = "local")  
+# move local disk dataframe to Spark; had to split into 10 commands
+ratingsSprk <- sdf_copy_to(sc, ratings_raw, "ratings_sprk01", overwrite = TRUE)
+
+```  
+  
+## Create Recommender Model in Spark  
+  
+```{r sprkmdl}
+# create Spark recommender model
+
+partitions<- ratingsSprk %>% sdf_random_split(training = 0.8, test = 0.2, seed = 137)
+spark_mdl <- ml_als(partitions$training, rating ~ userId + movieId,rating_col = "rating", user_col = "userId", item_col = "movieId", cold_start_strategy = "drop")
+summary(spark_mdl)
+# predictions
+sparkPredict <- ml_predict(spark_mdl,partitions$test)
+# create recommendation
+sparkRec<-ml_recommend(spark_mdl, type = c("items", "users"), n = 10)
+# check accuracy
+rmse<-ml_regression_evaluator(sparkPredict, metric_name = "rmse")
+mae<-ml_regression_evaluator(sparkPredict, metric_name = "mae")
+mse<-ml_regression_evaluator(sparkPredict, metric_name = "mse")
+als_spark<-c(rmse,mse,mae)
+# disconnect
+spark_disconnect(sc)
+```
+  
+## Compare to Results from Project 4 Dataset
+  
+
+  
+```{r rm}
+# coercing into realRatingMatrix
+t <- distinct(ratings_raw)
+ratings <- as(t, "realRatingMatrix")
+# Subsetting training set with movies that have been rated more than 200 times
+ratings1 <- ratings[,colCounts(ratings) > 200]
+# create evaluation scheme
+eval_sets <- evaluationScheme(data = ratings1, method = "cross-validation", k = 4, given = 5, goodRating = 3)
+# build UBCF model and SVD model
+ubcf_rec <- Recommender(getData(eval_sets, "train"), "UBCF", param = list(normalize = "center", method = "cosine"))
+svd_rec <- Recommender(getData(eval_sets, "train"), "SVD", param = list(normalize = "center", k = 10))
+# Make predictions with each model
+ubcf_pred <- predict(ubcf_rec, getData(eval_sets, "known"), type = "ratings")
+svd_pred <- predict(svd_rec, getData(eval_sets, "known"), type = "ratings")
+```  
+  
+<br>
+## Compare the UBCF and SVD Recommender Models to Spark Model
+<a href="#top"> Back To Top </a>  
+  
+Now that we have built the two models, we will compare the errors and other metrics for each model:  
+
+```{r err1}
+# Table showing error calcs for UBCF vs SVD
+ubcf_er <- calcPredictionAccuracy(ubcf_pred, getData(eval_sets, "unknown"))
+svd_er <- calcPredictionAccuracy(svd_pred, getData(eval_sets, "unknown"))
+
+# RMSE, MSE and MAE
+k_Method <- c("ALS","UBCF-Cosine","SVD")
+k_table_p <- data.frame(rbind(als_spark,ubcf_er, svd_er)) 
+rownames(k_table_p) <- k_Method
+k_table_p <- k_table_p[order(k_table_p$RMSE ),]
+kable(k_table_p) %>% kable_styling()
+```   
+  
+<br>
+
+# References
+<a href="#top"> Back To Top </a>
+
+* 
