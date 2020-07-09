@@ -1,0 +1,77 @@
+---
+title: "DATA 612 - Summer 2020 - Final Project Proposal"
+author: "Bruno de Melo and Leland Randles"
+date: "7/9/2020"
+output: 
+  html_document:
+    toc: true # table of content true
+    toc_float: true
+    toc_depth: 3  # up to three depths of headings (specified by #, ## and ###)
+    number_sections: true  #if you want number sections at each table header
+    theme: united  # many options for theme, this one is my favorite
+    highlight: tango  # specifies the syntax highlighting style
+    #css: my.css   # you can add your custom css, should be in same folder
+---
+
+# Final Project Goal: Anime Recommendation System  
+<a href="#top"> Back To Top </a>
+  
+We will create a collaborative filtering and content-based recommendation system for anime programming (TV shows, movies, on-line, etc.). Anime is defined by Merriam-Webster dictionary as "a style of animation originating in Japan that is characterized by stark colorful graphics depicting vibrant characters in action-filled plots often with fantastic or futuristic themes."  
+    
+Anime is an industry that exceeds USD $19.1 billion. Anime - already huge in Japan - is experiencing a surge of popularity in the west, which is contributing to its record sales (https://www.nerdly.co.uk/2020/03/12/9-reasons-why-anime-is-experiencing-a-huge-growth-in-popularity/).  
+  
+<br>
+  
+# Final Project Dataset  
+<a href="#top"> Back To Top </a>
+  
+The dataset we will be use was extracted from the web site https://myanimelist.net/, which is the world's largest anime and manga community.  
+  
+This dataset is available in kaggle: https://www.kaggle.com/CooperUnion/anime-recommendations-database.  
+  
+There are two datasets - one containing user preference data (73,516 users on 12,294 anime shows) and a file containing the details pertaining to each anime show. Users add anime shows they watched to their "completed list" and then give it a rating. These datasets are a compilation of those ratings.  
+  
+<br>
+  
+## Content for Each Dataset  
+<a href="#top"> Back To Top </a>
+  
+* Anime.csv  
+     
+    + anime_id - myanimelist.net's unique id identifying an anime.     
+    + name - full name of anime.    
+    + genre - comma separated list of genres for this anime.     
+    + type - movie, TV, OVA, etc.      
+    + episodes - how many episodes in this show. (1 if movie).     
+    + rating - average rating out of 10 for this anime.      
+    + members - number of community members that are in this anime's "group".    
+  
+<br>
+
+* Rating.csv              
+     
+    + user_id - non identifiable randomly generated user id.      
+    + anime_id - the anime that this user has rated.     
+    + rating - rating out of 10 this user has assigned (-1 if the user watched it but didn't assign a rating).  
+    
+<br>
+
+We will use the ratings for collaborative filtering and genre plus type for content-based recommendation.      
+<br>
+  
+# Final Project Dataset  
+<a href="#top"> Back To Top </a>
+  
+<br>
+  
+$\textbf{Software:}$  
+We plan to store the dataset in Spark, leveraging the work done in project 5. We will be using Rstudio, and packages like recommenderlab and sparklyr.  
+  
+$\textbf{Methodogies:}$  
+IBCF, UBCF, SVD, and ALS. Similarity methods by Pearson, Jaccard, & Cosine and normalization methods like center, z-score.  
+  
+$\textbf{Visualization:}$  
+If time allows for it, we will build a shiny app.  
+  
+
+
