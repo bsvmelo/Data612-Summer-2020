@@ -41,6 +41,7 @@ ratings_raw<- select(training_raw, 1:3)
 ```  
   
 ## Move Dataframe to Spark 
+<a href="#top"> Back To Top </a>
   
 Once the dataframe was created on the local disk, we connected to Spark and copied it to a Spark dataframe:  
   
@@ -54,6 +55,7 @@ ratingsSprk <- sdf_copy_to(sc, ratings_raw, "ratings_sprk", overwrite = TRUE)
 ```  
   
 ## Create Recommender Model in Spark  
+<a href="#top"> Back To Top </a>
   
 After loading the data frame to Spark, we built a recommender system using the `ml_als` function available in `sparklyr`, which builds collaborative filtering models using Alternating Least Squares (ALS).  
 
@@ -78,6 +80,7 @@ spark_disconnect(sc)
 ```
   
 ## Compare to Results from Project 4 Dataset
+<a href="#top"> Back To Top </a>
   
 In the section below, we recreate the model and generate predictions just as we had in Project 4:  
   
@@ -98,6 +101,7 @@ svd_pred <- predict(svd_rec, getData(eval_sets, "known"), type = "ratings")
 ```  
   
 <br>
+
 ## Compare the UBCF and SVD Recommender Models to Spark Model
 <a href="#top"> Back To Top </a>  
   
