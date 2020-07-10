@@ -1,5 +1,5 @@
 ---
-title: "DATA 612 - Summer 2020 - Final Project Proposal"
+title: "DATA 612 - Final Project Proposal"
 author: "Bruno de Melo and Leland Randles"
 date: "7/9/2020"
 output: 
@@ -68,7 +68,7 @@ $\textbf{Software:}$
 We plan to store the dataset in Spark, leveraging the work done in project 5. We will be using Rstudio, and packages like recommenderlab and sparklyr.  
   
 $\textbf{Methodogies:}$  
-IBCF, UBCF, SVD, and ALS. Similarity methods by Pearson, Jaccard, & Cosine and normalization methods like center, z-score.  
+We plan to use any or all of IBCF, UBCF, SVD, and ALS. We will explore multiple similarity methods, including Pearson, Jaccard, and Cosine. We will also explore normalization methods like center, z-score.  
   
 $\textbf{Visualization:}$  
 If time allows for it, we will build a shiny app.  
