@@ -33,6 +33,7 @@ This is an R Markdown document. Markdown is a simple formatting syntax for autho
 When you click the **Knit** button a document will be generated that includes both content as well as the output of any embedded R code chunks within the document. You can embed an R code chunk like this:
 
 ```{r load}
+set.seed(1234)
 #loading dataset
 anime_raw <- read_csv("https://raw.githubusercontent.com/Randles-CUNY/DATA612/master/Final_Project/datasets_571_1094_anime.csv") %>% data.frame()
 #useful data frames
@@ -65,33 +66,39 @@ genre_b[,2:ncol(genre_mtx)][genre_b[,2:ncol(genre_mtx)] > 0] <- 1
 # calculate similarity matrix
 genre_bm<-as(genre_b, "binaryRatingMatrix")
 genre_sim <- similarity(genre_bm,method = "cosine", which = "users")
-# visualization
+# visualization - 20 animes
 genre_v <- as(genre_sim, "matrix")
 colnames(genre_v)<-anime_genre$anime_id
 rownames(genre_v)<-anime_genre$anime_id
-image(genre_v[,1:20])
+image(genre_v[1:20,1:20])
 
-genre_mtx[,2:length(uniq_genre)]<-uniq_genre
+#Recommendation
 
-anime_genre_mtx<-cbind(anime_id=anime_genre$anime_id,genres1)
-genre_mtx<-as.matrix(     l_mat[,2:ncol(l_mat)])
+# set number of recommendations
+n_recommended <- 7
+# randomly select a anime_id and get corresponding name 
+a_id <- sample(anime_name$anime_id, 1)
+a_id<-32281
+a_name<-anime_name[anime_name$anime_id == a_id,]$name
+# get recommendations
+recs <- sort(genre_v[as.character(a_id),], decreasing = TRUE)[1:n_recommended]
+# get IDs
+recs_id <- as.numeric(names(recs))
+# create list 
+recs_names <- anime_name[anime_name$anime_id %in% recs_id,]$name
+# create table
+header <- sprintf("Animes Similar to %s", a_name)
+# display the list of similar animes
+kable(recs_names, col.names = table_head)
 
-anime_genre_long<-gather(anime_genre_mtx, variable, value, -anime_genre_mtx$anime_id, na.rm = FALSE)
+library(cluster)
+kmeans<-kmeans(genre_v, centers = 10)
+clusplot(genre_v, kmeans$cluster, color = TRUE, shade = TRUE, labels = 13, lines = 0)
 
+kmeans<-kmeans(genre_v[1:100,1:100], centers = 3)
+clusplot(genre_v[1:100,1:100], kmeans$cluster, color = TRUE, shade = TRUE, labels = 13, lines = 0)
 
-
-tmp<-as.vector(str_split(anime_genre$genre, ","))
-x<- (strsplit(anime_genre$genre,',',fixed=FALSE))
-
-`rownames<-`(t(as.data.frame(strsplit(text, '\\.'))), NULL)
-x<- reshape::colsplit(anime_genre$genre, split = "," , name=c(1:13)) 
-x[1]
-
-extract(anime_genre,anime_genre$genre, regex=",")
-
-file_name<-"/Users/blam/Documents/GitHub/Data612/DATA612/Final_Project/rating.csv"
-
-rating_ <- file.split(file_name,size=4000000, same.dir = TRUE)
+c<-kmeans$cluster
 
 #loading dataset
 ratings_raw1 <- read_csv("https://raw.githubusercontent.com/bsvmelo/DATA612/master/Final_Project/rating_partaa.csv") %>% data.frame()
@@ -108,14 +115,39 @@ anime_raw$rating[is.na(anime_raw$rating)] <- NA
 
 
 
+
+
+
+
+
 ```
 
 ## Including Plots
 
 You can also embed plots, for example:
 
-```{r pressure, echo=FALSE}
-plot(pressure)
+```{r garbage}
+
+
+genre_mtx[,2:length(uniq_genre)]<-uniq_genre
+
+anime_genre_mtx<-cbind(anime_id=anime_genre$anime_id,genres1)
+genre_mtx<-as.matrix(     l_mat[,2:ncol(l_mat)])
+
+anime_genre_long<-gather(anime_genre_mtx, variable, value, -anime_genre_mtx$anime_id, na.rm = FALSE)
+
+tmp<-as.vector(str_split(anime_genre$genre, ","))
+x<- (strsplit(anime_genre$genre,',',fixed=FALSE))
+
+`rownames<-`(t(as.data.frame(strsplit(text, '\\.'))), NULL)
+x<- reshape::colsplit(anime_genre$genre, split = "," , name=c(1:13)) 
+x[1]
+
+extract(anime_genre,anime_genre$genre, regex=",")
+
+file_name<-"/Users/blam/Documents/GitHub/Data612/DATA612/Final_Project/rating.csv"
+
+rating_ <- file.split(file_name,size=4000000, same.dir = TRUE)
 ```
 
 Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.
