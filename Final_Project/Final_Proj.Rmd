@@ -59,16 +59,16 @@ for (i in 1:nrow(anime_genre)) {
  }
 }
 genre_b<-genre_mtx
-genre_b[,][is.na(genre_b[,])] <- 0
-genre_b[,][genre_b[,] > 0] <- 1
+genre_b[,2:ncol(genre_mtx)][is.na(genre_b[,2:ncol(genre_mtx)])] <- 0
+genre_b[,2:ncol(genre_mtx)][genre_b[,2:ncol(genre_mtx)] > 0] <- 1
 
 # calculate similarity matrix
 genre_bm<-as(genre_b, "binaryRatingMatrix")
 genre_sim <- similarity(genre_bm,method = "cosine", which = "users")
-
 # visualization
 genre_v <- as(genre_sim, "matrix")
-colnames(genre_v)<-genre_b$
+colnames(genre_v)<-anime_genre$anime_id
+rownames(genre_v)<-anime_genre$anime_id
 image(genre_v[,1:20])
 
 genre_mtx[,2:length(uniq_genre)]<-uniq_genre
