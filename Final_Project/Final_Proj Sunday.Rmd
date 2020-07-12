@@ -1,0 +1,257 @@
+---
+title: "Final_Proj"
+author: "Bruno de Melo and Leland Randles"
+date: "7/10/2020"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+if(!require(tidyverse)) install.packages("tidyverse",repos = "http://cran.us.r-project.org")
+if(!require(recommenderlab)) install.packages("recommenderlab",repos = "http://cran.us.r-project.org")
+if(!require(knitr)) install.packages("tidyverse",repos = "http://cran.us.r-project.org")
+if(!require(kableExtra)) install.packages("kableExtra",repos = "http://cran.us.r-project.org")
+if(!require(sparklyr)) install.packages("sparklyr",repos = "http://cran.us.r-project.org")
+if(!require(NCmisc)) install.packages("NCmisc",repos = "http://cran.us.r-project.org")
+if(!require(data.table)) install.packages("data.table",repos = "http://cran.us.r-project.org")
+
+library("tidyverse")
+library("recommenderlab")
+
+library("kableExtra")
+
+library("sparklyr")
+library("NCmisc")
+library("data.table")
+
+```
+
+## R Markdown
+
+This is an R Markdown document. Markdown is a simple formatting syntax for authoring HTML, PDF, and MS Word documents. For more details on using R Markdown see <http://rmarkdown.rstudio.com>.
+
+When you click the **Knit** button a document will be generated that includes both content as well as the output of any embedded R code chunks within the document. You can embed an R code chunk like this:
+
+```{r load message = FALSE}
+set.seed(1234)
+#loading dataset
+anime_raw <- read_csv("https://raw.githubusercontent.com/Randles-CUNY/DATA612/master/Final_Project/datasets_571_1094_anime.csv") %>% data.frame()
+#useful data frames
+anime_name<- select(anime_raw, c(1,2))
+anime_genre<-select(anime_raw, c(1,3,4))
+anime_members<-select(anime_raw, c(1,7))
+anime_comp<-anime_raw
+
+
+#loading dataset
+ratings_raw1 <- read_csv("https://raw.githubusercontent.com/bsvmelo/DATA612/master/Final_Project/rating_partaa.csv") %>% data.frame()
+ratings_raw2 <- read_csv("https://raw.githubusercontent.com/bsvmelo/DATA612/master/Final_Project/rating_partab.csv") %>% data.frame()
+#conversion to realRatingsMatrix
+colnames(ratings_raw2)<-c(colnames(ratings_raw1))
+rating_raw<-rbind(ratings_raw1,ratings_raw1)
+rating_raw$rating[(rating_raw$rating) == -1 ] <- 0
+
+```
+# Data exploration
+
+## By type
+Plot indicates which typeas we will use in analysis: TV, OVA, Movie, Special and ONA. We will exclude Music and NA.
+
+```{r message = FALSE }
+# Type
+a_type <- anime_comp %>% group_by(type) %>% summarise(Count=n())
+ggplot(a_type, mapping = aes(x=reorder(type, -Count), y=Count ))+geom_col()+ labs(x = " Anime Types")
+```
+
+#Relationship number of members and Ratings
+Dataset contains data on number of community members that are in this anime's
+"group". This is certainly an indication of popularity. Dataset also contains the average rating out of 10 for this anime group. We will check the relationshipt between number of members and ratings, to check for biases.
+We will use the log of the number of members in order to account for its variability (minimun of 12 and maximum of 1mn members).
+
+Chart below indicates that there's a positive relationship between members and ratings. We can also see in the rectangular area that there are less popular groups with higher ratings. We may use this fact to enrich our recommendation list.
+
+```{r message=FALSE}
+anime_comp<-drop_na(anime_comp)
+ggplot(anime_comp, mapping = aes(x=log(members), y=rating))+geom_point(alpha=1/15)+geom_smooth()+annotate("rect", xmin=c(3.3), xmax=c(4.7), ymin=c(7.3) , ymax=c(10), alpha=0.2, color="blue", fill="orange")
+
+```
+
+# Content based recommendation 
+
+We build a Content based recommendation system based on genre similarity and based on popularity. Approach is to take column "genre" in the dataset, which displays multiple tagged genres and build recommendations around it. 
+
+## Recommendations based on genre similarity
+First, we will filter the dataset by types as discussed above and clean off NAs values. We will then create a binary matrix of animes by genres. Lastly, we will calculate a similarity matrix. 
+
+Final goal is to randomly select an anime, and display a top N recommendation list based on similarity between genres.
+
+```{r genre}
+# subsetting for type and NAs
+anime_genre<- subset(anime_genre,  type %in% c("TV", "OVA", "Movie", "Special","ONA"), -type)
+anime_genre<-drop_na(anime_genre)
+anime_genre_ids<-anime_genre$anime_id
+#Genre dataset conversion to realRatingsMatrix
+#splitting genre column
+genres1 <- as.data.frame(tstrsplit(anime_genre[,2], '[,]', type.convert=FALSE), stringsAsFactors=FALSE)
+colnames(genres1) <- c(1:ncol(genres1))
+#grabing unique genres
+genre_vec<-(as.vector(trimws(unlist(genres1))))
+uniq_genre<-unique(genre_vec)
+uniq_genre<-uniq_genre[!is.na(uniq_genre)]
+#creating matrix anime_id and genres
+anime_genre_mtx<-cbind(anime_id=anime_genre$anime_id,genres1)
+#creating binarized matrix anime_id and genre
+genre_mtx<-matrix(NA,nrow(anime_genre),length(uniq_genre)+1)
+genre_mtx[,1]<-anime_genre_mtx$anime_id
+colnames(genre_mtx)<-c("anime_id",uniq_genre)
+for (i in 1:nrow(anime_genre_mtx)) {
+ for (j in 2:ncol(anime_genre_mtx)) {
+  mat_col = which(uniq_genre == trimws(anime_genre_mtx[i,j]))+1
+  genre_mtx[i,mat_col] <- 1
+ }
+}
+genre_b<-genre_mtx
+genre_b[,2:ncol(genre_mtx)][is.na(genre_b[,2:ncol(genre_mtx)])] <- 0
+genre_b[,2:ncol(genre_mtx)][genre_b[,2:ncol(genre_mtx)] > 0] <- 1
+genre_b<-genre_b[,2:ncol(genre_mtx)]
+# calculate similarity matrix - non normalized
+genre_bm<-as(genre_b, "binaryRatingMatrix")
+genre_sim <- similarity(genre_bm,method = "Jaccard", which = "users")
+# visualization - 20 animes
+genre_v <- as(genre_sim, "matrix")
+colnames(genre_v)<-anime_genre$anime_id
+rownames(genre_v)<-anime_genre$anime_id
+image(genre_v[1:20,1:20], main="Similarity Matrix between 20 animes")
+
+
+```
+
+
+# Top N Recommendation by genre similarity
+
+Below we implement the recommendation list based on the similarity matrix calculated above. One anime is randomly sampled and the N most similar animes  to the one sampled is displayed.
+
+```{r genre rec}
+# set number of recommendations
+n_recommended <- 10
+# randomly select a anime_id and get corresponding name 
+a_id <- sample(anime_genre$anime_id, 1)
+a_name<-anime_name[anime_name$anime_id == a_id,]$name
+# get recommendations
+recs <- sort(genre_v[as.character(a_id),], decreasing = TRUE)[1:n_recommended]
+# get IDs
+recs_id <- as.numeric(names(recs))
+# create list 
+recs_names <- anime_name[anime_name$anime_id %in% recs_id,]$name
+# create table
+header <- sprintf("Animes Similar to %s", a_name)
+# display the list of similar animes
+kable(recs_names, col.names = header) %>% kable_styling()
+
+#library(cluster)
+#kmeans<-kmeans(genre_v, centers = 10)
+#clusplot(genre_v, kmeans$cluster, color = TRUE, shade = TRUE, labels = 13, lines = 0)
+
+#kmeans<-kmeans(genre_v[1:100,1:100], centers = 3)
+#clusplot(genre_v[1:100,1:100], kmeans$cluster, color = TRUE, shade = TRUE, labels = 13, lines = 0)
+
+#c<-kmeans$cluster
+```
+
+#Popularity-based recommendation 
+
+Popularity will be measured by the number of times an anime has been viewed, based on the ratings dataset. Ratings dataset is a typical item-user matrix, and with the use of the function colCounts from the recommenderlab package, a frequency term will be calculated.
+
+First, we will conform the rating dataset to the dataset used above. Next step is to create a viewer frequency or popularity dataset. We will then transpose the binary matrix of animes by genres created above.
+
+In order to incorporate the popularity dataset into the binary matrix, our approach is to divide the number of views by the number of genres an anime has. To avoid penalizing animes that have many genre classifications, that result will be weighted by the square root of total numbers of genres.
+
+Final goal is to randomly select a genre, and display a top N recommendation list based on that index.
+
+
+```{r}
+# creating matrix genre-anime
+#ratings matrix
+# subsetting to match same user id used in the matrix above
+rating_raw<-rating_raw[rating_raw$user_id %in% anime_genre_ids,]
+rating_mtx <- as(rating_raw, "binaryRatingMatrix")
+user_mtx<-t(as(rating_mtx,"matrix"))
+# counting how many times an anime has been seen
+genre_count<-data.frame(anime_id= names(colCounts(rating_mtx)), views=colCounts(rating_mtx))
+```
+
+Popularity matrix creation
+
+
+```{r}
+# creating matrix anime-genre
+rownames(genre_b)<-anime_genre$anime_id
+genre_t<-t(genre_b)
+colnames(genre_t)<-anime_genre$anime_id
+genre_t<-genre_t[,colnames(genre_t) %in% c(as.character(genre_count$anime_id))]
+#insert number of views in each column, weigthed by square root of total numbers of genres
+for (i in 1:ncol(genre_t)) {
+  mat_col = which(colnames(genre_t)[i] == as.character(genre_count$anime_id))
+  s<-genre_count$views[mat_col]/sqrt(sum(genre_t[,i]))
+  genre_t[,i]<- genre_t[,i]*s
+}
+
+```
+
+# Top N Recommendation by popularity
+
+Below we implement the recommendation list based on the popularity matrix calculated above. One genre is randomly sampled and the N most popular animes related to that genre is displayed.
+
+```{r}
+# set number of recommendations
+n_recommended <- 10
+# randomly select a genre and get corresponding name 
+s_genre <- sample(uniq_genre, 1)
+# get recommendations
+rec_genre <- sort(genre_t[as.character(s_genre),], decreasing = TRUE)[1:n_recommended]
+# get IDs
+rec_id_genre <- as.numeric(names(rec_genre))
+# create list 
+rec_names <- anime_name[anime_name$anime_id %in% rec_id_genre,]$name
+# create table
+header <- sprintf("Most viewed animes in %s", s_genre)
+# display the list of similar animes
+kable(rec_names, col.names = header) %>% kable_styling()
+
+
+
+
+```
+
+
+
+# UBCF
+
+```{r}
+#ratings matrix
+rating_raw<-rating_raw[rating_raw$user_id %in% anime_genre_ids,]
+rating_mtx <- as(rating_raw, "realRatingMatrix")
+# split datasets
+eval_sets <- evaluationScheme(data = ratings, method = "cross-validation", k = 4, given = 1, goodRating = 6)
+# build UBCF model and SVD model
+ubcf_rec <- Recommender(getData(eval_sets, "train"), "UBCF", param = list(normalize = "center", method = "cosine"))
+# Make predictions with each model
+ubcf_pred <- predict(ubcf_rec, getData(eval_sets, "known"), n=20)
+
+
+# Table showing error calcs for UBCF vs SVD
+ubcf_er <- calcPredictionAccuracy(ubcf_pred, getData(eval_sets, "unknown"))
+svd_er <- calcPredictionAccuracy(svd_pred, getData(eval_sets, "unknown"))
+
+# RMSE, MSE and MAE
+k_Method <- c("ALS","UBCF-Cosine","SVD")
+k_table_p <- data.frame(rbind(als_spark,ubcf_er, svd_er)) 
+rownames(k_table_p) <- k_Method
+k_table_p <- k_table_p[order(k_table_p$RMSE ),]
+kable(k_table_p) %>% kable_styling()
+```   
+
+
+
+```
+
