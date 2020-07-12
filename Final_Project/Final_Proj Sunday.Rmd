@@ -214,7 +214,7 @@ rec_id_genre <- as.numeric(names(rec_genre))
 # create list 
 rec_names <- anime_name[anime_name$anime_id %in% rec_id_genre,]$name
 # create table
-header <- sprintf("Most viewed animes in %s", s_genre)
+header <- sprintf("Most viewed animes in genre: %s", s_genre)
 # display the list of similar animes
 kable(rec_names, col.names = header) %>% kable_styling()
 
@@ -222,6 +222,70 @@ kable(rec_names, col.names = header) %>% kable_styling()
 
 
 ```
+
+# Least popular but with high ratings
+To add a surprise element to the list generated above, we will populate the top N recommendation by popularity using a list of animes that are the least popular but have high ratings.
+
+As highlight in the chart, there are some animes that might not be picked by our popularity system because those groups have few members. In fact, from that least popular group, only 2 animes are part of the popularity matrix calculated above. This can be seen below.
+```{r}
+pop<-anime_comp %>% filter(log(members) > 3.5, log(members) < 4.5 , rating>7 )
+pop<-drop_na(pop)
+tmp<-sum(c(as.character(pop$anime_id) %in% colnames(genre_t)))
+tmp
+```
+These two animes will be dropped from this dataset and we will proceed with buiding a surprise popularity matrix using the same procedure as previously described.
+
+```{r}
+pop<-pop[!c(as.character(pop$anime_id) %in% colnames(genre_t)),]
+pop<-select(pop,c(1,3,6))
+#splitting genre column
+pop_g <- as.data.frame(tstrsplit(pop[,2], '[,]', type.convert=FALSE), stringsAsFactors=FALSE)
+colnames(pop_g) <- c(1:ncol(pop_g))
+#grabing unique genres
+g_vec<-(as.vector(trimws(unlist(pop_g))))
+uniq_g<-unique(g_vec)
+uniq_g<-uniq_g[!is.na(uniq_g)]
+
+#creating matrix anime_id and genres
+pop_genre_mtx<-cbind(anime_id=pop$anime_id,pop_g)
+#creating binarized matrix anime_id and genre
+pop_mtx<-matrix(NA,nrow(pop_genre_mtx),length(uniq_genre)+1)
+pop_mtx[,1]<-pop$anime_id
+colnames(pop_mtx)<-c("anime_id",uniq_genre)
+for (i in 1:nrow(pop_genre_mtx)) {
+ for (j in 2:ncol(pop_genre_mtx)) {
+  mat_col = which(uniq_genre == trimws(pop_genre_mtx[i,j]))+1
+  pop_mtx[i,mat_col] <- 1
+ }
+}
+genre_p<-pop_mtx
+genre_p[,2:ncol(pop_mtx)][is.na(genre_p[,2:ncol(pop_mtx)])] <- 0
+genre_p[,2:ncol(pop_mtx)][genre_p[,2:ncol(pop_mtx)] > 0] <- 1
+genre_p<-genre_p[,2:ncol(pop_mtx)]
+```
+
+Similarity matrix will be interactively built based on the anime choosen in the Top N Recommendation by genre similarity module above.
+
+```{r}
+# calculate similarity matrix - non normalized
+tmp_anime<-genre_b[as.character(a_id),]
+if (sum(tmp_anime))=1 { }    
+    
+genre_p<-rbind(genre_p,tmp_anime)
+pop_bm<-as(genre_p, "binaryRatingMatrix")
+pop_sim <- similarity(pop_bm,method = "Jaccard", which = "users")
+# visualization - 20 animes
+genre_pop <- as(pop_sim, "matrix")
+colnames(genre_pop)<-anime_genre$anime_id
+rownames(genre_pop)<-anime_genre$anime_id
+image(genre_v[1:20,1:20], main="Similarity Matrix between 20 animes")
+
+```
+
+
+
+```
+
 
 
 
