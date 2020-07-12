@@ -269,19 +269,34 @@ Similarity matrix will be interactively built based on the anime choosen in the 
 ```{r}
 # calculate similarity matrix - non normalized
 tmp_anime<-genre_b[as.character(a_id),]
-if (sum(tmp_anime))=1 { }    
-    
 genre_p<-rbind(genre_p,tmp_anime)
 pop_bm<-as(genre_p, "binaryRatingMatrix")
 pop_sim <- similarity(pop_bm,method = "Jaccard", which = "users")
 # visualization - 20 animes
 genre_pop <- as(pop_sim, "matrix")
-colnames(genre_pop)<-anime_genre$anime_id
-rownames(genre_pop)<-anime_genre$anime_id
-image(genre_v[1:20,1:20], main="Similarity Matrix between 20 animes")
+colnames(genre_pop)<-c(pop$anime_id,a_id)
+rownames(genre_pop)<-c(pop$anime_id,a_id)
+image(genre_pop, main="Similarity Matrix between 20 animes")
 
 ```
 
+# Surprise Recommendation 
+
+Below we implement the recommendation list based on the similarity matrix calculated above. Based on the anime that was selected above, top N most similar animes to the one sampled is displayed.
+
+```{r genre rec}
+# set number of recommendations
+n_recommended <- 3
+# get recommendations
+rec_pop <- sort(genre_pop[as.character(a_id),], decreasing = TRUE)[1:n_recommended]
+# get IDs
+rec_id_p <- as.numeric(names(rec_pop))
+# create list 
+rec_names_p <- anime_name[anime_name$anime_id %in% rec_id_p,]$name
+# create table
+header <- sprintf(" Surprise! These animes are not well known but similar to: %s", a_name)
+# display the list of similar animes
+kable(rec_names_p, col.names = header) %>% kable_styling()
 
 
 ```
