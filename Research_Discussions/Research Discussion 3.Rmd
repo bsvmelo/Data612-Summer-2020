@@ -1,0 +1,30 @@
+---
+title: "Research Discussion Assignment 2"
+author: "Bruno de Melo"
+date: "7/16/2020"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Research Discussion Assignment 3
+
+Please complete the research discussion assignment in a Jupyter or R Markdown notebook. You should post the GitHub link to your research in a new discussion thread.
+As more systems and sectors are driven by predictive analytics, there is increasing awareness of the possibility and pitfalls of algorithmic discrimination. In what ways do you think Recommender Systems reinforce human bias? Reflecting on the techniques we have covered, do you think recommender systems reinforce or help to prevent unethical targeting or customer segmentation?  Please provide one or more examples to support your arguments.
+
+A few resources:
+Evan Estola (2016): When Recommendations Systems Go Bad; MLconf SEA 2016
+Rishabh Jain (2016): When Recommendation Systems Go Bad
+Moritz Hardt, Eric Price, Nathan Srebro (2016):  Equality of Opportunity in Supervised Learning
+
+
+I will use the results of these papers to answer the questions: “People Who Liked This Study Also Liked”: An Empirical Investigation of the Impact of Recommender Systems on Sales Volume and Diversity,” and “When Do Recommender Systems Work The Best? The Moderating Effects Of Product Attributes And Consumer Reviews On Recommender Performance,” Kartik by Hosanagar and Carnegie Mellon business analytics professor Dokyun Lee.
+
+Bias: Recommendations don’t necessarily help customer discover niche products. In one of their research studies, authors looked at whether recommendation systems help people discover novel and niche items that they might not otherwise discover, but are a great fit for us personally. What they found is that, because common recommendation systems are based on sales and ratings — for example, people who bought this also bought this — they’re unable to surface truly novel items that have not been discovered by many other people. This tends to create a “rich gets richer” effect for popular items, and it might also prevent consumers from finding better product matches because of this bias for items that have been purchased by others or that have been rated well by others. 
+
+Response to hedonic products: Another aspect they looked at is whether the type of the product matters. So they classified all the products in the data set into two groups: utilitarian products and hedonic products. Utilitarian products serve some functional purpose — for example, appliances or groceries. Hedonic products don’t serve a functional purpose, but really appeal to some sensory perception — for example, jewelry. They found that recommendations have a low to moderate impact for utilitarian products, but for the hedonic products, they have a very significant impact. And these hedonic products — things like jewelry, that we don’t really need — when a recommendation suggests that something is a great fit, or says that people with similar tastes like this product, that really moves the needle in terms of making the customer respond to that recommendation. 
+
+Another interesting discussing point around biases is on conflict of interest. This is very prominent in marketplace platforms like Amazon, especially considering that Amazon sells its own branded products and also because Amazon allows “sponsorship” of products to be displayed at the top of search results. 
+In this specific case, recommendation results can be indeed manipulated to show products that are economically more favorable to the platform in detriment of products with higher ratings. There is no easy solution to this type of bias, given that this is not a model feature but rather an economic feature driving the recommendation results. Obviously, customers should be wary when they are recommended own-branded or sponsored products. However, sometimes customers can be eluded to the idea of perceived higher value just because the product is high on the results page.
